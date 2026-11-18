@@ -1,8 +1,9 @@
 name: Publicar no GitHub Pages
 
+# Manual por enquanto: o GitHub Pages precisa estar ativo (Settings -> Pages ->
+# Source: GitHub Actions). Em repositório privado isso exige plano pago.
+# Depois de ativar, troque por:  on: { push: { branches: [main] }, workflow_dispatch: {} }
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
