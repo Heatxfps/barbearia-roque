@@ -40,5 +40,5 @@ Tudo abaixo está como **exemplo** em [`src/data.ts`](../src/data.ts). Dá para 
 
 - [ ] Repositório público ou privado? (afeta a publicação, ver [ARQUITETURA.md](ARQUITETURA.md#publicação))
 - [ ] Onde publicar o link da demonstração (GitHub Pages, Vercel ou Netlify)
-- [ ] Valores finais da proposta ([PROPOSTA.md](PROPOSTA.md#preço))
+- [ ] Valores finais da proposta comercial
 - [ ] Ter um domínio próprio para a demonstração?

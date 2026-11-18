@@ -55,7 +55,7 @@
 - "Sem preferência" escolhe o profissional com menos atendimentos no dia.
 - Lembretes: 24 h e 1 h antes; "faz 20 dias do seu corte" (ajustável).
 
-### Custos mensais estimados (para o preço da proposta)
+### Custos mensais estimados
 
 | Item | Custo |
 |---|---|

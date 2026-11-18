@@ -40,10 +40,11 @@ npm run build
 
 ## Publicar (link para mostrar ao dono)
 
-O repositório já tem o workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml), que publica no **GitHub Pages** a cada push na `main`.
-Para ativar: **Settings → Pages → Source: GitHub Actions**.
+O app é publicado automaticamente no **GitHub Pages** a cada push na `main`, pelo workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
 
-> O GitHub Pages em repositório **privado** exige um plano pago. Alternativas: deixar o repositório público ou publicar na Vercel/Netlify (planos gratuitos, funcionam com repositório privado). Veja [docs/ARQUITETURA.md](docs/ARQUITETURA.md#publicação).
+**Link:** https://heatxfps.github.io/barbearia-roque/
+
+> O repositório é público. O material comercial (proposta e preços) fica na pasta local `privado/`, que está no `.gitignore` e nunca vai para o GitHub.
 
 ## Estrutura
 
@@ -70,7 +71,6 @@ docs/                   Documentação do projeto e da proposta
 
 ## Documentação
 
-- [docs/PROPOSTA.md](docs/PROPOSTA.md): abordagem, roteiro da apresentação e preços
 - [docs/ARQUITETURA.md](docs/ARQUITETURA.md): como o app é construído e o caminho até a versão de produção
 - [docs/ANIMACAO.md](docs/ANIMACAO.md): como funciona a abertura com a logo se montando
 - [docs/PENDENCIAS.md](docs/PENDENCIAS.md): o que falta confirmar com a barbearia

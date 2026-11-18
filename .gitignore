@@ -3,3 +3,6 @@ dist
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Material interno (proposta e preços) — nunca vai para o GitHub
+privado/
