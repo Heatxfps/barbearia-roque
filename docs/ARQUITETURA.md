@@ -1,77 +1,83 @@
-# Arquitetura
-
-## Hoje: protótipo (v0.1)
-
-- **React 18 + TypeScript + Vite**: app de página única, leve (~55 KB compactado).
-- **PWA**: `manifest.webmanifest` + `sw.js`, instalável na tela inicial e funcionando offline.
-- **Dados no próprio celular** (`localStorage`, em `src/store.ts`): cada aparelho vê só os próprios agendamentos. Serve para a demonstração, **não** para uso real.
-- **Horários ocupados fictícios** (`src/agenda.ts`): uma parte dos horários aparece como ocupada para a agenda parecer real.
-- Sem dependências além de React (ícones em SVG próprio, navegação própria).
-
-### Limitações conhecidas do protótipo
-
-- Agendamentos não chegam à barbearia: não existe servidor ainda.
-- A duração do serviço não bloqueia os horários seguintes (um combo de 70 min ocupa só o horário inicial).
-- Os lembretes de WhatsApp são apenas texto na tela de confirmação.
-- O painel do dono usa números de demonstração.
-- Não há login: o cliente é identificado pelo nome e WhatsApp salvos no aparelho.
-
-## Próximo passo: versão de produção (v1)
+# Arquitetura (v1)
 
 ```
- Celular do cliente (PWA)         Painel da barbearia (PWA, login)
+ Celular do cliente (PWA)        Painel (/#painel, no celular ou no computador)
           │                                   │
           └──────────────┬────────────────────┘
-                         ▼
-                 Backend (Supabase)
-     ┌───────────────────┼─────────────────────┐
-  Banco Postgres     Autenticação        Funções agendadas
-  (agenda, clientes,  (código SMS/        (lembretes 24h e 1h,
-   serviços, selos)    WhatsApp)           "volte a cortar")
-                                                │
-                                                ▼
-                                    API do WhatsApp (Z-API / Meta)
+                         ▼  HTTPS (Caddy)
+              Servidor Node.js (pasta server/)
+        ┌────────────────┼──────────────────────┐
+   API REST (Fastify)   Tarefas a cada minuto   Entrega o app (dist/)
+        │               (lembretes, retorno)
+        ▼                      │
+   SQLite (/dados/roque.db)    ▼
+                       WhatsApp: demo | Evolution API | Z-API
 ```
 
-**Sugestão de tecnologia:** Supabase (banco Postgres + login + funções), plano gratuito no começo. Firebase é uma alternativa equivalente.
+## Peças
 
-### Modelo de dados (v1)
-
-| Tabela | Campos principais |
+| Pasta | O que é |
 |---|---|
-| `profissionais` | id, nome, foto, especialidade, ativo, comissão % |
-| `servicos` | id, nome, descrição, preço, duração, ativo |
-| `expediente` | profissional, dia da semana, início, fim, intervalo |
-| `bloqueios` | profissional, início, fim, motivo (folga, almoço, férias) |
-| `clientes` | id, nome, telefone, aniversário, criado em |
-| `agendamentos` | id, cliente, profissional, serviço, início, fim, status (confirmado / concluído / faltou / cancelado), origem (app / balcão) |
-| `selos` | cliente, agendamento, data |
+| `src/` | App React + TypeScript (Vite). Instalável (PWA) |
+| `src/api/` | Camada de dados. `http.ts` fala com o servidor; `local.ts` é o modo offline/vitrine (GitHub Pages) |
+| `src/screens/painel/` | Painel da barbearia |
+| `server/src/` | API Node.js (Fastify) com SQLite embutido no Node (`node:sqlite`), sem dependências nativas |
+| `server/test/` | Testes automáticos da API (`npm test`) |
+| `deploy/`, `Dockerfile`, `docker-compose.yml` | Publicação na VPS |
 
-### Regras de negócio a implementar
+**Por que SQLite?** Uma barbearia faz algumas dezenas de agendamentos por dia. O SQLite aguenta milhares por segundo, é um arquivo só (backup = copiar o arquivo) e não precisa de servidor de banco. Se um dia virar um produto para várias barbearias, a troca para Postgres é localizada em `server/src/db.ts`.
 
-- Horário livre = expediente − bloqueios − agendamentos, respeitando a **duração** do serviço.
-- Cancelamento pelo cliente até X horas antes (definir com o dono).
-- Selo de fidelidade só quando o atendimento é marcado como **concluído**.
-- "Sem preferência" escolhe o profissional com menos atendimentos no dia.
-- Lembretes: 24 h e 1 h antes; "faz 20 dias do seu corte" (ajustável).
+**Modos do app:**
 
-### Custos mensais estimados
+| Comando | Dados vêm de | Uso |
+|---|---|---|
+| `npm run dev` | servidor local (`npm run servidor`) | desenvolvimento |
+| `npm run dev:offline` / `build:offline` | o próprio celular (dados fictícios) | vitrine no GitHub Pages |
+| `npm run build` (Docker) | o servidor na VPS | produção |
+
+## Modelo de dados
+
+| Tabela | Conteúdo |
+|---|---|
+| `barbearia` | Nome, cidade, endereço, WhatsApp, Instagram (chave/valor) |
+| `servicos` | Nome, descrição, preço, duração, destaque, ativo |
+| `profissionais` | Nome, especialidade, ativo |
+| `expediente` | Por profissional e dia da semana: início, fim, intervalo |
+| `bloqueios` | Folgas e horários travados |
+| `clientes` | Nome, WhatsApp, último aviso de retorno |
+| `agendamentos` | Cliente, profissional, serviço, início, fim, preço, status, origem (app/balcão), lembretes enviados |
+| `codigos` | Códigos de login (hash, validade, tentativas) |
+| `mensagens` | Todo WhatsApp enviado ou simulado |
+| `usuarios` | Acesso ao painel: dono ou barbeiro |
+
+## Regras de negócio
+
+- **Horário livre** = expediente − intervalo − bloqueios − agendamentos ativos, respeitando a **duração** do serviço; sem horários no passado (antecedência mínima de 30 min).
+- **Sem preferência**: escolhe, entre os livres, o profissional com menos atendimentos no dia.
+- **Conflito**: o horário é reconferido dentro de uma transação no momento de gravar.
+- **Cancelamento pelo cliente**: até 2 h antes (configurável); depois disso, só pela barbearia.
+- **Fidelidade**: cada atendimento marcado como *concluído* gera 1 selo; a cada 10, 1 é grátis.
+- **Limites**: no máximo 3 horários futuros por cliente.
+
+Detalhes das rotas em [API.md](API.md). Publicação em [DEPLOY-VPS.md](DEPLOY-VPS.md).
+
+## Custos mensais estimados
 
 | Item | Custo |
 |---|---|
-| Hospedagem do app (Vercel/Netlify/GitHub Pages) | R$ 0 |
-| Supabase (plano gratuito; o pago custa ~US$ 25/mês) | R$ 0 a ~R$ 150 |
-| WhatsApp (Z-API ~R$ 100/mês, ou API oficial da Meta cobrada por mensagem) | ~R$ 50 a 120 |
-| Domínio próprio (ex.: `barbeariaroque.com.br`) | ~R$ 40/ano |
+| VPS 1 GB (Hostinger, Contabo, Hetzner) | ~R$ 25 a 40 |
+| Domínio `.com.br` (registro.br) | ~R$ 40/ano |
+| HTTPS (Let's Encrypt) | grátis |
+| WhatsApp: Evolution API (na própria VPS) | grátis |
+| WhatsApp: Z-API (alternativa mais estável) | ~R$ 100 |
 
-## Publicação
+Uma mesma VPS pode atender várias barbearias (um container por cliente).
 
-| Opção | Repositório privado? | Observação |
-|---|---|---|
-| **GitHub Pages** | Só em plano pago | Workflow já pronto em `.github/workflows/deploy.yml` |
-| **Vercel** | ✅ grátis | Importar o repositório; build `npm run build`, saída `dist` |
-| **Netlify** | ✅ grátis | Mesma configuração |
+## Próximos passos possíveis
 
-## Lojas de aplicativos (fase 2, opcional)
-
-O mesmo código pode ser empacotado com **Capacitor** para Play Store (taxa única de US$ 25) e App Store (US$ 99/ano + precisa de um Mac ou serviço de build na nuvem).
+- Tela para o dono editar **profissionais e expediente** (a API já tem: `/admin/profissionais`)
+- Sinal via **Pix** para quem costuma faltar
+- Planos de **assinatura** mensal
+- **Lista de espera** para horários cancelados
+- **Avaliação** pós-atendimento que leva ao Google Maps
+- Publicação nas lojas com Capacitor (Play Store: US$ 25 uma vez; App Store: US$ 99/ano)

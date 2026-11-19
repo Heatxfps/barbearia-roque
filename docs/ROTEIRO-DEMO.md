@@ -1,24 +1,36 @@
-# Roteiro da demonstração (5 minutos no celular)
+# Roteiro da demonstração (~8 minutos)
 
-**Antes da reunião**
-1. Abra o link do app no seu celular e toque em **Compartilhar → Adicionar à Tela de Início** (iPhone) ou **⋮ → Instalar app** (Android). O ícone da Roque aparece entre os apps do celular, o que já impressiona.
-2. Faça um agendamento de teste para o "Seu próximo horário" aparecer na tela inicial.
-3. Deixe o celular com brilho alto e sem notificações.
+O ideal é ter **dois aparelhos**: o seu celular (cliente) e um notebook ou tablet com o **painel** aberto. O dono vê o agendamento cair no painel na hora.
 
-**Na reunião**
+## Antes da reunião
 
-1. **Abra o app pelo ícone e fique em silêncio.** Deixe a animação da parede e da logo acontecer. É o momento "uau".
-2. **"Esse é o app da Roque, não de uma plataforma genérica."** Mostre a tela inicial.
+1. Suba o servidor com os dados de demonstração (na VPS, ou no notebook: veja o [README](../README.md#rodar-no-computador)):
+   - VPS: `docker compose exec roque node --disable-warning=ExperimentalWarning src/seed-demo.ts --limpar`
+   - Notebook: `npm run servidor:demo` e `npm run servidor`
+2. No celular, abra o link e **instale o app** (iPhone: Compartilhar → Adicionar à Tela de Início; Android: ⋮ → Instalar app).
+3. No notebook, abra `SEU-LINK/#painel` e entre com o login do dono.
+4. Brilho alto e notificações desligadas.
+
+> Sem internet ou sem servidor? A vitrine https://heatxfps.github.io/barbearia-roque/ funciona sozinha, com dados fictícios no próprio celular.
+
+## Na reunião
+
+1. **Abra o app pelo ícone e fique em silêncio.** A parede acende e a logo se monta. É o momento "uau".
+2. **"Esse é o app da Roque, não de uma plataforma genérica."**
 3. **Entregue o celular ao dono** e peça para ele marcar um corte:
-   serviço → profissional → dia → horário → nome → confirmar.
-   *"Isso leva 20 segundos e ninguém precisou responder WhatsApp."*
-4. **Meus horários:** mostre que o cliente remarca ou cancela sozinho e o horário volta a ficar livre.
-5. **Fidelidade:** *"Cliente que tem cartão de selos volta mais vezes."*
-6. **A Roque → Área da barbearia:** o painel do dono.
-   - Agenda do dia por profissional
-   - Faturamento previsto
-   - Faltas caindo
-   - "Clientes para chamar de volta": *"O app lembra o cliente sozinho que está na hora de cortar."*
-7. Pare e pergunte: **"O que mais te ajudaria no dia a dia?"** Anote e coloque na proposta.
+   serviço → profissional → dia → horário → WhatsApp → código → confirmar.
+   *"Sem senha, sem baixar nada da loja, e ninguém precisou responder WhatsApp."*
+4. **Vire o notebook:** o horário apareceu na agenda do painel. Na aba **WhatsApp**, a mensagem de confirmação que o cliente recebeu.
+5. **Painel, aba Agenda:**
+   - Números do dia e do mês, faltas e quanto vem pelo app
+   - Marque um atendimento como **✓ Concluído**: *"o selo de fidelidade entra sozinho no app do cliente."*
+   - **Bloquear horário**: *"folga do barbeiro? Bloqueia aqui e some da agenda dos clientes."*
+   - **Encaixe** para o cliente que chegou sem marcar
+6. **Clientes para chamar de volta:** *"quem sumiu há 20 dias recebe lembrete automático. Isso é dinheiro voltando sozinho."*
+7. **Ajustes:** mude o preço de um serviço e mostre no celular que já mudou.
+8. **No celular, Meus horários:** remarcar e cancelar; o horário volta a ficar livre.
+9. Pare e pergunte: **"O que mais te ajudaria no dia a dia?"** Anote e coloque na proposta.
 
-**Para limpar os dados de teste:** A Roque → Sua conta → *Sair e apagar dados*.
+## Depois
+
+Para limpar tudo e deixar pronto para uso real, rode o `seed-demo` de novo **sem** dados fictícios: apague o volume `dados` antes de colocar clientes reais (veja [DEPLOY-VPS.md](DEPLOY-VPS.md)).

@@ -1,0 +1,5 @@
+# Caddy pede e renova o certificado HTTPS sozinho (Let's Encrypt, grátis).
+{$DOMINIO} {
+	encode gzip zstd
+	reverse_proxy roque:3333
+}

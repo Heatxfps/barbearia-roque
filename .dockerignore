@@ -1,0 +1,13 @@
+node_modules
+server/node_modules
+dist
+server/dados
+server/.env
+.env
+originais
+privado
+tools
+docs
+.git
+.github
+.claude

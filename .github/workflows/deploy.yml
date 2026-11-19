@@ -24,7 +24,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # vitrine sem servidor: o app roda em modo offline (dados de demonstração no celular)
+      - run: npm run build:offline
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

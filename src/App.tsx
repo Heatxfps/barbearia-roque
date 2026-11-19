@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Splash from './components/Splash'
 import Icone from './components/Icone'
 import Inicio from './screens/Inicio'
@@ -6,15 +6,21 @@ import Agendar from './screens/Agendar'
 import MeusHorarios from './screens/MeusHorarios'
 import Fidelidade from './screens/Fidelidade'
 import Perfil from './screens/Perfil'
-import Painel from './screens/Painel'
+import Painel from './screens/painel/Painel'
+import { ProvedorApp, useApp } from './contexto'
 
 export type Aba = 'inicio' | 'agenda' | 'fidelidade' | 'perfil'
 export type Navegar = (destino: Aba | 'agendar' | 'painel', servicoId?: string) => void
 
-export default function App() {
-  const [splash, setSplash] = useState(() => !sessionStorage.getItem('roque-splash'))
+const lerSessao = (k: string) => { try { return sessionStorage.getItem(k) } catch { return null } }
+
+function Conteudo() {
+  const { barbearia, erroCarga, recarregar } = useApp()
+  const [splash, setSplash] = useState(() => !lerSessao('roque-splash') && location.hash !== '#painel')
   const [aba, setAba] = useState<Aba>('inicio')
-  const [modal, setModal] = useState<null | { tipo: 'agendar'; servicoId?: string } | { tipo: 'painel' }>(null)
+  const [modal, setModal] = useState<null | { tipo: 'agendar'; servicoId?: string } | { tipo: 'painel' }>(
+    () => (location.hash === '#painel' ? { tipo: 'painel' } : null)
+  )
 
   const fimSplash = useCallback(() => {
     try { sessionStorage.setItem('roque-splash', '1') } catch { /* ok */ }
@@ -23,10 +29,16 @@ export default function App() {
 
   const navegar: Navegar = (destino, servicoId) => {
     if (destino === 'agendar') setModal({ tipo: 'agendar', servicoId })
-    else if (destino === 'painel') setModal({ tipo: 'painel' })
-    else { setModal(null); setAba(destino) }
+    else if (destino === 'painel') { setModal({ tipo: 'painel' }); history.replaceState(null, '', '#painel') }
+    else { setModal(null); setAba(destino); if (location.hash) history.replaceState(null, '', location.pathname) }
     window.scrollTo(0, 0)
   }
+
+  useEffect(() => {
+    const f = () => location.hash === '#painel' && setModal({ tipo: 'painel' })
+    window.addEventListener('hashchange', f)
+    return () => window.removeEventListener('hashchange', f)
+  }, [])
 
   const abas: { id: Aba; rotulo: string; icone: string }[] = [
     { id: 'inicio', rotulo: 'Início', icone: 'inicio' },
@@ -35,14 +47,26 @@ export default function App() {
     { id: 'perfil', rotulo: 'A Roque', icone: 'perfil' },
   ]
 
+  if (modal?.tipo === 'painel') return <Painel navegar={navegar} />
+
   return (
     <div className="app">
       {splash && <Splash onFim={fimSplash} />}
 
-      {modal?.tipo === 'agendar' ? (
+      {!barbearia ? (
+        !splash && (
+          <div className="tela tela--centro">
+            {erroCarga ? (
+              <>
+                <h1 className="titulo">Sem conexão</h1>
+                <p className="suave centro">{erroCarga}</p>
+                <button className="botao botao--principal" onClick={recarregar}>Tentar de novo</button>
+              </>
+            ) : <div className="carregando" aria-label="Carregando" />}
+          </div>
+        )
+      ) : modal?.tipo === 'agendar' ? (
         <Agendar servicoInicial={modal.servicoId} navegar={navegar} />
-      ) : modal?.tipo === 'painel' ? (
-        <Painel navegar={navegar} />
       ) : (
         <>
           <main className="conteudo" key={aba}>
@@ -62,5 +86,13 @@ export default function App() {
         </>
       )}
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <ProvedorApp>
+      <Conteudo />
+    </ProvedorApp>
   )
 }

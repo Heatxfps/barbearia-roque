@@ -1,61 +1,78 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Navegar } from '../App'
 import Icone from '../components/Icone'
-import { moeda, profissionais, servicos } from '../data'
-import { dataLonga, horariosLivres, iso, proximosDias } from '../agenda'
-import { atualizar, novoId, useEstado } from '../store'
+import Entrar from '../components/Entrar'
+import { api, type Dia } from '../api'
+import { useApp } from '../contexto'
+import { dataLonga, lerData, moeda } from '../util'
+import { iniciais } from './Inicio'
 
 const ETAPAS = ['Serviço', 'Profissional', 'Horário', 'Confirmar'] as const
 
 export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: string; navegar: Navegar }) {
-  const { agendamentos, cliente } = useEstado()
+  const { barbearia, cliente, avisar } = useApp()
   const [etapa, setEtapa] = useState(servicoInicial ? 1 : 0)
   const [servicoId, setServicoId] = useState(servicoInicial ?? '')
   const [profId, setProfId] = useState('')
-  const dias = useMemo(() => proximosDias(14), [])
-  const [data, setData] = useState(iso(dias[0]))
+  const [dias, setDias] = useState<Dia[] | null>(null)
+  const [data, setData] = useState('')
+  const [horas, setHoras] = useState<string[] | null>(null)
   const [hora, setHora] = useState('')
-  const [nome, setNome] = useState(cliente?.nome ?? '')
-  const [tel, setTel] = useState(cliente?.telefone ?? '')
-  const [feito, setFeito] = useState(false)
+  const [enviando, setEnviando] = useState(false)
+  const [feito, setFeito] = useState<{ profissional: string } | null>(null)
 
-  const servico = servicos.find((s) => s.id === servicoId)
-  const prof = profissionais.find((p) => p.id === profId)
-  const livres = useMemo(() => (profId ? horariosLivres(data, profId, agendamentos) : []), [data, profId, agendamentos])
+  const servico = barbearia?.servicos.find((s) => s.id === servicoId)
+  const profs = [{ id: 'qualquer', nome: 'Sem preferência', especialidade: 'Primeiro profissional livre' }, ...(barbearia?.profissionais ?? [])]
+  const prof = profs.find((p) => p.id === profId)
+
+  // dias com vaga
+  useEffect(() => {
+    if (etapa !== 2 || !servicoId || !profId) return
+    setDias(null)
+    api.dias(servicoId, profId).then((d) => {
+      setDias(d)
+      setData((atual) => (d.some((x) => x.data === atual && x.livres) ? atual : d.find((x) => x.livres)?.data ?? d[0]?.data ?? ''))
+    }).catch((e) => avisar(e.message, 'erro'))
+  }, [etapa, servicoId, profId, avisar])
+
+  // horários do dia
+  useEffect(() => {
+    if (etapa !== 2 || !data) return
+    setHoras(null)
+    api.horarios(data, servicoId, profId).then(setHoras).catch((e) => avisar(e.message, 'erro'))
+  }, [etapa, data, servicoId, profId, avisar])
 
   const voltar = () => (etapa === 0 ? navegar('inicio') : setEtapa(etapa - 1))
 
-  const confirmar = () => {
-    let p = profId
-    if (p === 'qualquer') {
-      // escolhe o primeiro profissional livre nesse horário
-      p = profissionais.find((x) => x.id !== 'qualquer' && horariosLivres(data, x.id, agendamentos).includes(hora))?.id ?? 'p1'
-    }
-    atualizar((e) => ({
-      ...e,
-      cliente: { nome: nome.trim(), telefone: tel.trim() },
-      agendamentos: [
-        ...e.agendamentos,
-        { id: novoId(), servicoId, profissionalId: p, data, hora, cliente: nome.trim(), telefone: tel.trim(), status: 'confirmado', criadoEm: Date.now() },
-      ],
-    }))
-    setFeito(true)
+  const confirmar = async () => {
+    setEnviando(true)
+    try {
+      const r = await api.agendar({ servicoId, profissionalId: profId, data, hora })
+      setFeito({ profissional: barbearia?.profissionais.find((p) => p.id === r.profissionalId)?.nome ?? '' })
+    } catch (e) {
+      avisar((e as Error).message, 'erro')
+      setHora(''); setEtapa(2)
+    } finally { setEnviando(false) }
   }
+
+  if (!barbearia) return null
 
   if (feito && servico) {
     return (
       <div className="tela tela--centro">
         <div className="sucesso"><Icone nome="check" tam={44} /></div>
         <h1 className="titulo">Horário confirmado!</h1>
-        <p className="suave centro">{servico.nome} · {dataLonga(data)} às {hora}</p>
-        <p className="suave centro pequeno">Você vai receber um lembrete 1 dia antes e 1 hora antes pelo WhatsApp.</p>
+        <p className="suave centro capitalizar">{servico.nome} com {feito.profissional}<br />{dataLonga(data)} às {hora}</p>
+        <p className="suave centro pequeno">
+          {barbearia.whatsappModo === 'demo' || barbearia.whatsappModo === 'offline'
+            ? 'Na versão final, a confirmação e os lembretes (1 dia e 1 hora antes) chegam no WhatsApp. Veja as mensagens no painel da barbearia.'
+            : 'A confirmação chegou no seu WhatsApp. Você também recebe lembretes 1 dia e 1 hora antes.'}
+        </p>
         <button className="botao botao--principal" onClick={() => navegar('agenda')}>Ver meus horários</button>
         <button className="botao botao--fantasma" onClick={() => navegar('inicio')}>Voltar ao início</button>
       </div>
     )
   }
-
-  const telValido = tel.replace(/\D/g, '').length >= 10
 
   return (
     <div className="tela">
@@ -66,15 +83,13 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
       </header>
 
       <ol className="etapas">
-        {ETAPAS.map((e, i) => (
-          <li key={e} className={i === etapa ? 'atual' : i < etapa ? 'feita' : ''}>{e}</li>
-        ))}
+        {ETAPAS.map((e, i) => <li key={e} className={i === etapa ? 'atual' : i < etapa ? 'feita' : ''}>{e}</li>)}
       </ol>
 
       {etapa === 0 && (
         <div className="lista">
-          {servicos.map((s) => (
-            <button key={s.id} className={`item ${servicoId === s.id ? 'item--sel' : ''}`} onClick={() => { setServicoId(s.id); setEtapa(1) }}>
+          {barbearia.servicos.map((s) => (
+            <button key={s.id} className={`item ${servicoId === s.id ? 'item--sel' : ''}`} onClick={() => { setServicoId(s.id); setHora(''); setEtapa(1) }}>
               <div><strong>{s.nome}</strong><span className="suave">{s.descricao}</span></div>
               <div className="item__preco"><strong>{moeda(s.preco)}</strong><span className="suave">{s.duracao} min</span></div>
             </button>
@@ -84,10 +99,10 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
 
       {etapa === 1 && (
         <div className="lista">
-          {profissionais.map((p) => (
+          {profs.map((p) => (
             <button key={p.id} className={`item ${profId === p.id ? 'item--sel' : ''}`} onClick={() => { setProfId(p.id); setHora(''); setEtapa(2) }}>
               <div className="item__com-avatar">
-                <div className="avatar avatar--p">{p.iniciais}</div>
+                <div className="avatar avatar--p">{p.id === 'qualquer' ? '★' : iniciais(p.nome)}</div>
                 <div><strong>{p.nome}</strong><span className="suave">{p.especialidade}</span></div>
               </div>
               <Icone nome="seta" />
@@ -99,23 +114,24 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
       {etapa === 2 && (
         <>
           <div className="dias">
-            {dias.map((d) => {
-              const v = iso(d)
+            {!dias && Array.from({ length: 6 }, (_, i) => <div key={i} className="dia dia--esqueleto" />)}
+            {dias?.map((d) => {
+              const dt = lerData(d.data)
               return (
-                <button key={v} className={`dia ${data === v ? 'dia--sel' : ''}`} onClick={() => { setData(v); setHora('') }}>
-                  <span>{d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
-                  <strong>{d.getDate()}</strong>
-                  <span>{d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}</span>
+                <button key={d.data} disabled={!d.livres} className={`dia ${data === d.data ? 'dia--sel' : ''}`} onClick={() => { setData(d.data); setHora('') }}>
+                  <span>{dt.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
+                  <strong>{dt.getDate()}</strong>
+                  <span>{d.livres ? dt.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '') : 'lotado'}</span>
                 </button>
               )
             })}
           </div>
-          <p className="suave pequeno capitalizar">{dataLonga(data)}</p>
-          {livres.length ? (
+          {data && <p className="suave pequeno capitalizar">{dataLonga(data)} · {servico?.nome} ({servico?.duracao} min)</p>}
+          {horas === null ? (
+            <div className="horas">{Array.from({ length: 8 }, (_, i) => <div key={i} className="hora hora--esqueleto" />)}</div>
+          ) : horas.length ? (
             <div className="horas">
-              {livres.map((h) => (
-                <button key={h} className={`hora ${hora === h ? 'hora--sel' : ''}`} onClick={() => setHora(h)}>{h}</button>
-              ))}
+              {horas.map((h) => <button key={h} className={`hora ${hora === h ? 'hora--sel' : ''}`} onClick={() => setHora(h)}>{h}</button>)}
             </div>
           ) : (
             <p className="vazio">Sem horários livres neste dia. Tente outra data.</p>
@@ -135,15 +151,18 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
             <div className="linha-entre total"><span>Total</span><strong>{moeda(servico.preco)}</strong></div>
             <p className="suave pequeno">Pagamento na barbearia (Pix, cartão ou dinheiro).</p>
           </section>
-          <label className="campo">
-            <span>Seu nome</span>
-            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Como podemos te chamar?" autoComplete="name" />
-          </label>
-          <label className="campo">
-            <span>WhatsApp</span>
-            <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="(27) 9 9999-9999" inputMode="tel" autoComplete="tel" />
-          </label>
-          <button className="botao botao--principal fixo" disabled={!nome.trim() || !telValido} onClick={confirmar}>Confirmar agendamento</button>
+
+          {cliente ? (
+            <>
+              <p className="suave pequeno">Agendando como <strong>{cliente.nome}</strong></p>
+              <button className="botao botao--principal fixo" disabled={enviando} onClick={confirmar}>{enviando ? 'Confirmando…' : 'Confirmar agendamento'}</button>
+            </>
+          ) : (
+            <section className="cartao">
+              <h3>Quase lá: identifique-se</h3>
+              <Entrar textoBotao="Continuar" aoEntrar={() => avisar('Pronto! Agora é só confirmar.')} />
+            </section>
+          )}
         </>
       )}
     </div>

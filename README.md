@@ -1,80 +1,107 @@
 # Barbearia Roque — Aplicativo
 
-Protótipo do aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, lembretes, cartão fidelidade e painel do dono, com a identidade visual premium da casa.
+Aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, login pelo WhatsApp, lembretes automáticos, cartão fidelidade e painel completo para o dono, com a identidade visual premium da casa.
 
-> **Status:** protótipo navegável para a apresentação ao dono (v0.1). Os dados (serviços, preços, profissionais e horários) são **exemplos** e precisam ser confirmados. Veja [docs/PENDENCIAS.md](docs/PENDENCIAS.md).
+> **Status:** v1.0, com app e servidor completos e testados. Serviços, preços e equipe são **exemplos** (editáveis pelo painel). Veja [docs/PENDENCIAS.md](docs/PENDENCIAS.md).
 
-## O que já funciona
+**Vitrine (modo offline, sem servidor):** https://heatxfps.github.io/barbearia-roque/ · painel: [`/#painel`](https://heatxfps.github.io/barbearia-roque/#painel) (demo: `dono@roque.local` / `roque123`)
 
-| Tela | O que faz |
-|---|---|
-| **Abertura** | A parede de tijolos da barbearia acende e a logo da Roque se monta peça por peça, no lugar do letreiro real. Um toque pula a animação. |
-| **Início** | Saudação, botão de agendar, próximo horário, cartão fidelidade, serviços e equipe. |
-| **Agendar** | Serviço → profissional (ou "sem preferência") → dia e horário → nome e WhatsApp → confirmação. |
-| **Meus horários** | Próximos horários com opção de remarcar ou cancelar, além do histórico. |
-| **Fidelidade** | Cartão de selos (10 cortes = 1 grátis) e convite para indicar amigos. |
-| **A Roque** | Foto do espaço, WhatsApp, Instagram, como chegar e horário de funcionamento. |
-| **Painel da barbearia** | Visão do dono: agenda do dia por profissional, faturamento previsto, faltas e clientes para chamar de volta (dados de demonstração). |
+## O que tem
 
-É um **PWA**: abre por um link e pode ser instalado na tela inicial do celular (Android e iPhone) sem passar pela loja de apps.
+**Para o cliente (app)**
+- Abertura animada: a parede da barbearia acende e a logo se monta no lugar do letreiro
+- Agendamento: serviço → profissional (ou "sem preferência") → dia → horário. Respeita duração, almoço, folgas e horários ocupados
+- Login **sem senha**: código de 6 dígitos no WhatsApp
+- Meus horários: remarcar, cancelar (até 2 h antes) e histórico
+- Cartão fidelidade com selos reais (10 atendimentos = 1 grátis)
+- Informações da casa, horário de funcionamento, WhatsApp, Instagram e mapa
+
+**Para a barbearia (painel em `/#painel`)**
+- Agenda do dia por profissional, com ações: **concluído**, **faltou**, **cancelar** e WhatsApp do cliente
+- Encaixe de cliente de balcão e **bloqueio** de horários (folga, médico, casa fechada)
+- Números: atendimentos, previsto do dia, faturado no mês, taxa de falta, % marcado pelo app, ranking por profissional e serviço
+- **Clientes para chamar de volta** (20+ dias sem vir)
+- Histórico de todas as mensagens de WhatsApp
+- Edição de serviços e preços (o app atualiza na hora)
+- Acesso de barbeiro: cada um vê só a própria agenda
+
+**Automático (servidor)**
+- Confirmação, lembrete 24 h antes, lembrete 1 h antes, aviso de cancelamento e "volte a cortar" pelo WhatsApp
 
 ## Rodar no computador
 
-Requisito: [Node.js](https://nodejs.org) 20 ou mais novo.
+Requisito: [Node.js](https://nodejs.org) **22.18+** (recomendado 24).
 
 ```powershell
 npm install
 ```
 
 ```powershell
+npm --prefix server install
+```
+
+Em um terminal, o servidor (com dados de demonstração):
+
+```powershell
+npm run servidor:demo
+```
+
+```powershell
+npm run servidor
+```
+
+Em outro terminal, o app:
+
+```powershell
 npm run dev
 ```
 
-Abra `http://localhost:5173`. Para testar no celular na mesma rede Wi-Fi, use o endereço "Network" que aparece no terminal.
+- App: `http://localhost:5173`
+- Painel: `http://localhost:5173/#painel` (padrão: `dono@roque.local` / `roque123`; troque em `server/.env`)
+- No celular, na mesma rede Wi-Fi: use o endereço "Network" que o Vite mostra
 
-Para gerar a versão final (pasta `dist/`):
+Testes automáticos da API:
 
 ```powershell
-npm run build
+npm test
 ```
 
-## Publicar (link para mostrar ao dono)
+## Publicar
 
-O app é publicado automaticamente no **GitHub Pages** a cada push na `main`, pelo workflow [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
+- **VPS (produção):** Docker + HTTPS automático. Passo a passo em [docs/DEPLOY-VPS.md](docs/DEPLOY-VPS.md)
+- **GitHub Pages (vitrine):** automático a cada push na `main`, em modo offline (dados fictícios no próprio celular)
 
-**Link:** https://heatxfps.github.io/barbearia-roque/
-
-> O repositório é público. O material comercial (proposta e preços) fica na pasta local `privado/`, que está no `.gitignore` e nunca vai para o GitHub.
+> O material comercial (proposta e preços) fica na pasta local `privado/`, que está no `.gitignore` e nunca vai para o GitHub.
 
 ## Estrutura
 
 ```
-originais/              Imagens originais enviadas (logo e foto da parede)
-tools/
-  separar_logo.py       Separa a logo em peças para a animação e gera os ícones
-  limpar_parede.py      Remove o letreiro da foto (para a logo "acender" no lugar)
-public/
-  logo-partes/          Peças da logo (geradas)
-  img/                  Ícones do app e fotos de fundo
-  manifest.webmanifest  Configuração do PWA (nome, ícone, cores)
-  sw.js                 Service worker (funciona offline)
-src/
-  data.ts               ⚠️ Serviços, preços, equipe, horários e contatos (EDITAR AQUI)
-  agenda.ts             Cálculo de dias e horários disponíveis
-  store.ts              Dados salvos no celular (protótipo)
-  App.tsx               Navegação entre as telas
-  components/Splash.tsx Animação de abertura
-  screens/              Telas do app
-  styles.css            Identidade visual e animações
-docs/                   Documentação do projeto e da proposta
+src/                     App (React + TypeScript + Vite, PWA)
+  api/                   Camada de dados: http.ts (servidor) e local.ts (offline)
+  screens/               Telas do cliente
+  screens/painel/        Painel da barbearia
+  components/Splash.tsx  Animação de abertura
+server/                  API (Node.js + Fastify + SQLite)
+  src/rotas/             Rotas públicas, do cliente e do painel
+  src/agenda.ts          Cálculo de horários livres
+  src/jobs.ts            Lembretes e "volte a cortar"
+  src/whatsapp.ts        Envio (demo, Evolution API, Z-API)
+  src/seed-demo.ts       Dados fictícios para apresentação
+  test/                  Testes automáticos
+deploy/ Dockerfile docker-compose.yml   Publicação na VPS
+tools/                   Scripts que geraram as peças da logo e o fundo
+originais/               Logo e foto originais
+docs/                    Documentação
 ```
 
 ## Documentação
 
-- [docs/ARQUITETURA.md](docs/ARQUITETURA.md): como o app é construído e o caminho até a versão de produção
-- [docs/ANIMACAO.md](docs/ANIMACAO.md): como funciona a abertura com a logo se montando
-- [docs/PENDENCIAS.md](docs/PENDENCIAS.md): o que falta confirmar com a barbearia
-- [docs/ROTEIRO-DEMO.md](docs/ROTEIRO-DEMO.md): passo a passo para demonstrar o app na reunião
+- [docs/ARQUITETURA.md](docs/ARQUITETURA.md): como tudo se conecta, modelo de dados, regras e custos
+- [docs/API.md](docs/API.md): rotas da API
+- [docs/DEPLOY-VPS.md](docs/DEPLOY-VPS.md): publicar na VPS, backup e conexão do WhatsApp
+- [docs/ROTEIRO-DEMO.md](docs/ROTEIRO-DEMO.md): roteiro da apresentação
+- [docs/PENDENCIAS.md](docs/PENDENCIAS.md): o que confirmar com a barbearia
+- [docs/ANIMACAO.md](docs/ANIMACAO.md): como funciona a abertura
 
 ## Identidade visual
 
@@ -85,4 +112,4 @@ docs/                   Documentação do projeto e da proposta
 | `#c8935a` / `#e2b27a` | Cobre da luz das luminárias (botões e destaques) |
 | `#d3313a` / `#2f7fd6` | Vermelho e azul do poste de barbeiro (só na logo) |
 
-Fontes: **Cinzel** (títulos, clássica) e **Inter** (textos), ambas do Google Fonts.
+Fontes: **Cinzel** (títulos) e **Inter** (textos).

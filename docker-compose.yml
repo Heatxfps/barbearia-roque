@@ -1,0 +1,31 @@
+# Barbearia Roque na VPS: app + API + HTTPS automático (Caddy / Let's Encrypt)
+# Uso: veja docs/DEPLOY-VPS.md
+services:
+  roque:
+    build: .
+    restart: unless-stopped
+    env_file: server/.env
+    volumes:
+      - dados:/dados
+    expose:
+      - "3333"
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO:?defina DOMINIO no arquivo .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_dados:/data
+      - caddy_config:/config
+    depends_on:
+      - roque
+
+volumes:
+  dados:
+  caddy_dados:
+  caddy_config:

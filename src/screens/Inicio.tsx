@@ -1,8 +1,9 @@
+import { useEffect, useState } from 'react'
 import type { Navegar } from '../App'
 import Icone from '../components/Icone'
-import { barbearia, moeda, profissionais, servicos } from '../data'
-import { agoraChave, dataLonga } from '../agenda'
-import { useEstado } from '../store'
+import { api, type Agendamento } from '../api'
+import { useApp } from '../contexto'
+import { dataLonga, hora, moeda } from '../util'
 
 const B = import.meta.env.BASE_URL
 
@@ -12,25 +13,33 @@ function saudacao() {
 }
 
 export default function Inicio({ navegar }: { navegar: Navegar }) {
-  const { cliente, agendamentos, selos } = useEstado()
-  const agora = agoraChave()
-  const proximo = agendamentos
-    .filter((a) => a.status === 'confirmado' && `${a.data}T${a.hora}` >= agora)
-    .sort((a, b) => `${a.data}${a.hora}`.localeCompare(`${b.data}${b.hora}`))[0]
-  const servProx = proximo && servicos.find((s) => s.id === proximo.servicoId)
-  const hojeAberto = barbearia.horarios[new Date().getDay()]
+  const { barbearia, cliente } = useApp()
+  const [proximo, setProximo] = useState<Agendamento | null>(null)
+
+  useEffect(() => {
+    if (!cliente) { setProximo(null); return }
+    api.meusAgendamentos().then(({ agora, agendamentos }) => {
+      const fut = agendamentos.filter((a) => a.status === 'confirmado' && a.inicio >= agora).sort((a, b) => a.inicio.localeCompare(b.inicio))
+      setProximo(fut[0] ?? null)
+    }).catch(() => {})
+  }, [cliente])
+
+  if (!barbearia) return null
+  const hoje = barbearia.horarios[new Date().getDay()]
+  const meta = barbearia.fidelidadeMeta
+  const selos = cliente?.fidelidade.selos ?? 0
 
   return (
     <div className="tela">
       <header className="hero" style={{ backgroundImage: `url(${B}img/parede-sem-letreiro.jpg)` }}>
         <div className="hero__sombra" />
-        <img className="hero__logo" src={`${B}logo-partes/logo-completa.png`} alt="Barbearia Roque" />
+        <img className="hero__logo" src={`${B}logo-partes/logo-completa.png`} alt={barbearia.nome} />
         <div className="hero__texto">
           <p className="sobretitulo">{saudacao()}{cliente ? `, ${cliente.nome.split(' ')[0]}` : ''}</p>
           <h1 className="titulo">Seu horário,<br />do seu jeito.</h1>
           <p className="hero__status">
-            <span className={`ponto ${hojeAberto ? 'ponto--on' : ''}`} />
-            {hojeAberto ? `Aberto hoje · ${hojeAberto[0]}h às ${hojeAberto[1]}h` : 'Fechado hoje'}
+            <span className={`ponto ${hoje ? 'ponto--on' : ''}`} />
+            {hoje ? `Aberto hoje · ${hoje[0].replace(':00', 'h')} às ${hoje[1].replace(':00', 'h')}` : 'Fechado hoje'}
           </p>
         </div>
       </header>
@@ -39,13 +48,13 @@ export default function Inicio({ navegar }: { navegar: Navegar }) {
         <Icone nome="tesoura" /> Agendar horário
       </button>
 
-      {proximo && servProx && (
+      {proximo && (
         <button className="cartao cartao--destaque cartao--botao" onClick={() => navegar('agenda')}>
           <p className="sobretitulo">Seu próximo horário</p>
           <div className="linha-entre">
             <div>
-              <h3>{servProx.nome}</h3>
-              <p className="suave">{dataLonga(proximo.data)} · {proximo.hora}</p>
+              <h3>{proximo.servico}</h3>
+              <p className="suave capitalizar">{dataLonga(proximo.inicio)} · {hora(proximo.inicio)} · {proximo.profissional}</p>
             </div>
             <Icone nome="seta" />
           </div>
@@ -56,16 +65,16 @@ export default function Inicio({ navegar }: { navegar: Navegar }) {
         <div className="linha-entre">
           <div>
             <p className="sobretitulo">Cartão fidelidade</p>
-            <h3>{selos} de {barbearia.fidelidadeMeta} cortes</h3>
+            <h3>{cliente ? `${selos} de ${meta} cortes` : `A cada ${meta} cortes, 1 grátis`}</h3>
           </div>
-          <span className="badge">faltam {barbearia.fidelidadeMeta - selos}</span>
+          {cliente && <span className="badge">faltam {meta - selos}</span>}
         </div>
-        <div className="barra"><div style={{ width: `${(selos / barbearia.fidelidadeMeta) * 100}%` }} /></div>
+        {cliente && <div className="barra"><div style={{ width: `${(selos / meta) * 100}%` }} /></div>}
       </button>
 
       <h2 className="secao">Serviços</h2>
       <div className="lista">
-        {servicos.filter((s) => s.destaque).map((s) => (
+        {barbearia.servicos.filter((s) => s.destaque).map((s) => (
           <button key={s.id} className="item" onClick={() => navegar('agendar', s.id)}>
             <div>
               <strong>{s.nome}</strong>
@@ -82,9 +91,9 @@ export default function Inicio({ navegar }: { navegar: Navegar }) {
 
       <h2 className="secao">Nossa equipe</h2>
       <div className="carrossel">
-        {profissionais.filter((p) => p.id !== 'qualquer').map((p) => (
+        {barbearia.profissionais.map((p) => (
           <div key={p.id} className="barbeiro">
-            <div className="avatar">{p.iniciais}</div>
+            <div className="avatar">{iniciais(p.nome)}</div>
             <strong>{p.nome}</strong>
             <span className="suave">{p.especialidade}</span>
           </div>
@@ -92,4 +101,10 @@ export default function Inicio({ navegar }: { navegar: Navegar }) {
       </div>
     </div>
   )
+}
+
+export const iniciais = (nome: string) => {
+  const partes = nome.trim().split(/\s+/)
+  const ultimo = partes[partes.length - 1]
+  return /^\d+$/.test(ultimo) ? `${partes[0][0]}${ultimo}` : (partes[0][0] + (partes[1]?.[0] ?? '')).toUpperCase()
 }

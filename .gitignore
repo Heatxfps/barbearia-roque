@@ -6,3 +6,9 @@ dist
 
 # Material interno (proposta e preços) — nunca vai para o GitHub
 privado/
+
+# banco de dados do servidor
+server/dados/
+server/.env
+
+.env
