@@ -32,9 +32,12 @@ export default function Inicio({ navegar }: { navegar: Navegar }) {
 
   return (
     <div className="tela">
-      <header className="hero" style={{ backgroundImage: `url(${B}img/parede-sem-letreiro.jpg)` }}>
-        <div className="hero__sombra" />
-        <img className="hero__logo" src={`${B}logo-partes/logo-completa.png`} alt={barbearia.nome} />
+      <header className="hero">
+        {/* mesmo enquadramento do splash: a logo fica onde está o letreiro na parede */}
+        <div className="hero__palco" style={{ backgroundImage: `url(${B}img/parede-sem-letreiro.jpg)` }}>
+          <div className="hero__sombra" />
+          <img className="hero__logo" src={`${B}logo-partes/logo-completa.png`} alt={barbearia.nome} />
+        </div>
         <div className="hero__texto">
           <p className="sobretitulo">{saudacao()}{cliente ? `, ${primeiroNome(cliente.nome)}` : ''}</p>
           <h1 className="titulo-editorial">Tradição no corte,<br /><em>presença</em> no estilo.</h1>

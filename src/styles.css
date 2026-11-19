@@ -504,3 +504,14 @@ a.botao { text-align: center; }
 @media (prefers-reduced-motion: reduce) {
   .botao--brilho::after, .conteudo { animation: none; }
 }
+
+/* hero com a parede em quadro quadrado, igual ao splash:
+   a logo cai exatamente onde fica o letreiro real (mesma calibração de .logo-montagem) */
+.hero { display: block; min-height: 0; padding: 0 0 4px; overflow: visible; }
+.hero__palco { position: relative; aspect-ratio: 1; background-size: cover; background-position: center; }
+.hero__sombra { background: linear-gradient(180deg, rgba(17,14,12,.45) 0%, rgba(17,14,12,.18) 22%, rgba(17,14,12,.18) 78%, var(--fundo) 100%); }
+.hero__logo {
+  position: absolute; width: 62%; left: 21.4%; top: 7.5%; right: auto; transform: none;
+  filter: drop-shadow(0 0 8px rgba(255, 196, 130, .3)) drop-shadow(0 6px 10px rgba(0,0,0,.6));
+}
+.hero__texto { padding: 0 20px; margin-top: -6px; }
