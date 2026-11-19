@@ -4,16 +4,20 @@ import Icone from '../components/Icone'
 import Entrar from '../components/Entrar'
 import { api, type Dia } from '../api'
 import { useApp } from '../contexto'
-import { dataLonga, lerData, moeda } from '../util'
+import { dataLonga, foto, lerData, moeda } from '../util'
 import { iniciais } from './Inicio'
 
-const ETAPAS = ['Serviço', 'Profissional', 'Horário', 'Confirmar'] as const
+const B = import.meta.env.BASE_URL
 
-export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: string; navegar: Navegar }) {
+const ETAPAS = ['Serviço', 'Barbeiro', 'Horário', 'Confirmar'] as const
+
+type Props = { servicoInicial?: string; profissionalInicial?: string; navegar: Navegar }
+
+export default function Agendar({ servicoInicial, profissionalInicial, navegar }: Props) {
   const { barbearia, cliente, avisar } = useApp()
-  const [etapa, setEtapa] = useState(servicoInicial ? 1 : 0)
+  const [etapa, setEtapa] = useState(servicoInicial ? (profissionalInicial ? 2 : 1) : 0)
   const [servicoId, setServicoId] = useState(servicoInicial ?? '')
-  const [profId, setProfId] = useState('')
+  const [profId, setProfId] = useState(profissionalInicial ?? '')
   const [dias, setDias] = useState<Dia[] | null>(null)
   const [data, setData] = useState('')
   const [horas, setHoras] = useState<string[] | null>(null)
@@ -22,7 +26,7 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
   const [feito, setFeito] = useState<{ profissional: string } | null>(null)
 
   const servico = barbearia?.servicos.find((s) => s.id === servicoId)
-  const profs = [{ id: 'qualquer', nome: 'Sem preferência', especialidade: 'Primeiro profissional livre' }, ...(barbearia?.profissionais ?? [])]
+  const profs = [{ id: 'qualquer', nome: 'Sem preferência', especialidade: 'Primeiro barbeiro livre', foto: null }, ...(barbearia?.profissionais ?? [])]
   const prof = profs.find((p) => p.id === profId)
 
   // dias com vaga
@@ -87,11 +91,15 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
       </ol>
 
       {etapa === 0 && (
-        <div className="lista">
+        <div className="cardapio">
           {barbearia.servicos.map((s) => (
-            <button key={s.id} className={`item ${servicoId === s.id ? 'item--sel' : ''}`} onClick={() => { setServicoId(s.id); setHora(''); setEtapa(1) }}>
-              <div><strong>{s.nome}</strong><span className="suave">{s.descricao}</span></div>
-              <div className="item__preco"><strong>{moeda(s.preco)}</strong><span className="suave">{s.duracao} min</span></div>
+            <button key={s.id} className={`cardapio__item ${servicoId === s.id ? 'cardapio__item--sel' : ''}`} onClick={() => { setServicoId(s.id); setHora(''); setEtapa(profissionalInicial ? 2 : 1) }}>
+              <div className="cardapio__linha">
+                <strong>{s.nome}</strong>
+                <span className="cardapio__pontos" />
+                <strong className="cardapio__preco">{moeda(s.preco)}</strong>
+              </div>
+              <span className="suave">{s.descricao} · {s.duracao} min</span>
             </button>
           ))}
         </div>
@@ -102,7 +110,7 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
           {profs.map((p) => (
             <button key={p.id} className={`item ${profId === p.id ? 'item--sel' : ''}`} onClick={() => { setProfId(p.id); setHora(''); setEtapa(2) }}>
               <div className="item__com-avatar">
-                <div className="avatar avatar--p">{p.id === 'qualquer' ? '★' : iniciais(p.nome)}</div>
+                <Avatar nome={p.nome} foto={p.foto} qualquer={p.id === 'qualquer'} />
                 <div><strong>{p.nome}</strong><span className="suave">{p.especialidade}</span></div>
               </div>
               <Icone nome="seta" />
@@ -113,6 +121,12 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
 
       {etapa === 2 && (
         <>
+          {prof && prof.id !== 'qualquer' && (
+            <div className="com-barbeiro">
+              <Avatar nome={prof.nome} foto={prof.foto} mini />
+              <span>{servico?.nome} com <strong>{prof.nome}</strong></span>
+            </div>
+          )}
           <div className="dias">
             {!dias && Array.from({ length: 6 }, (_, i) => <div key={i} className="dia dia--esqueleto" />)}
             {dias?.map((d) => {
@@ -144,7 +158,7 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
         <>
           <section className="cartao resumo">
             <div className="linha-entre"><span className="suave">Serviço</span><strong>{servico.nome}</strong></div>
-            <div className="linha-entre"><span className="suave">Profissional</span><strong>{prof.nome}</strong></div>
+            <div className="linha-entre"><span className="suave">Barbeiro</span><span className="resumo__prof"><Avatar nome={prof.nome} foto={prof.foto} qualquer={prof.id === 'qualquer'} mini /><strong>{prof.nome}</strong></span></div>
             <div className="linha-entre"><span className="suave">Quando</span><strong className="capitalizar">{dataLonga(data)}, {hora}</strong></div>
             <div className="linha-entre"><span className="suave">Duração</span><strong>{servico.duracao} min</strong></div>
             <hr />
@@ -167,4 +181,10 @@ export default function Agendar({ servicoInicial, navegar }: { servicoInicial?: 
       )}
     </div>
   )
+}
+
+function Avatar({ nome, foto: f, qualquer, mini }: { nome: string; foto?: string | null; qualquer?: boolean; mini?: boolean }) {
+  const cls = `avatar avatar--p ${mini ? 'avatar--mini' : ''}`
+  if (qualquer) return <div className={cls}><img className="avatar__r" src={`${B}logo-partes/r-recorte.png`} alt="" /></div>
+  return f ? <img className={`${cls} avatar--foto`} src={foto(f, 'avatar')} alt="" /> : <div className={cls}>{iniciais(nome)}</div>
 }

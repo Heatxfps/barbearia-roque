@@ -1,7 +1,7 @@
 /** Tipos compartilhados entre o app e a API. */
 
 export type Servico = { id: string; nome: string; descricao: string; preco: number; duracao: number; destaque: boolean; ativo?: boolean }
-export type Profissional = { id: string; nome: string; especialidade: string }
+export type Profissional = { id: string; nome: string; especialidade: string; foto?: string | null }
 
 export type Barbearia = {
   nome: string
@@ -9,6 +9,7 @@ export type Barbearia = {
   endereco: string
   whatsapp: string
   instagram: string
+  dono?: { nome: string; foto: string | null } | null
   horarios: Record<number, [string, string] | null>
   fidelidadeMeta: number
   diasAgenda: number

@@ -4,7 +4,7 @@ Os dados de exemplo ficam no servidor: valores iniciais em [`server/src/db.ts`](
 
 ## Dados da barbearia
 
-- [ ] Nome do dono (para a abordagem e a proposta)
+- [x] Nome do dono: **Luciano Roque** (foto em `originais/equipe/`)
 - [ ] Endereço completo e link do Google Maps
 - [ ] WhatsApp oficial da barbearia
 - [x] Instagram oficial: [@barbearia_roque](https://www.instagram.com/barbearia_roque/)
@@ -19,10 +19,19 @@ Os dados de exemplo ficam no servidor: valores iniciais em [`server/src/db.ts`](
 
 ## Equipe
 
-- [ ] Nome, foto e especialidade de cada profissional
-- [ ] Cada um tem agenda própria? Dias de folga?
+- [x] Nome e foto: **Daniel Andrade** e **Guilherme Moreira** (fotos em `originais/equipe/`, recortes gerados por `tools/preparar_fotos.py`)
+- [ ] Especialidade de cada um (hoje aparece só "Barbeiro")
+- [x] Agenda: conjunta, cuidada pelos próprios barbeiros (não há recepcionista)
+- [ ] Dias de folga de cada um
+- [ ] Texto sobre o Luciano e a história da casa (o da tela "A Roque" é provisório)
 - [ ] Trabalham por comissão? (afeta o painel do dono)
 - [ ] Cada barbeiro vai ter acesso próprio ao painel? (e-mail de cada um)
+
+## Dia do Noivo
+
+- [ ] O que entra no pacote (a tela traz uma sugestão: making of, corte e barba, padrinhos, ritual completo)
+- [ ] Fotos ou vídeos de making of anteriores para a galeria
+- [ ] Faixa de preço, ou manter "sob consulta"
 
 ## Regras
 

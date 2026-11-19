@@ -24,9 +24,8 @@ const SERVICOS: Servico[] = [
   { id: 'platinado', nome: 'Platinado / Luzes', descricao: 'Consulte o profissional', preco: 150, duracao: 120, destaque: false, ativo: true },
 ]
 const PROFS = [
-  { id: 'p1', nome: 'Profissional 1', especialidade: 'Cortes clássicos e degradê' },
-  { id: 'p2', nome: 'Profissional 2', especialidade: 'Barba e navalha' },
-  { id: 'p3', nome: 'Profissional 3', especialidade: 'Química e platinado' },
+  { id: 'p1', nome: 'Daniel Andrade', especialidade: 'Barbeiro', foto: 'daniel-andrade' },
+  { id: 'p2', nome: 'Guilherme Moreira', especialidade: 'Barbeiro', foto: 'guilherme-moreira' },
 ]
 // [abre, fecha, intervalo início, intervalo fim]
 const EXPEDIENTE: Record<number, [string, string, string?, string?] | null> = {
@@ -47,7 +46,7 @@ type Banco = {
   painel?: boolean
 }
 
-const CHAVE = 'roque-offline-v2'
+const CHAVE = 'roque-offline-v3'
 let banco: Banco = carregar()
 
 function carregar(): Banco {
@@ -125,7 +124,7 @@ export const apiLocal: Api = {
     for (let d = 0; d < 7; d++) { const e = EXPEDIENTE[d]; horarios[d] = e ? [e[0], e[1]] : null }
     return {
       nome: 'Barbearia Roque', cidade: 'Nova Venécia - ES', endereco: 'Endereço a confirmar · Nova Venécia - ES',
-      whatsapp: '5527999999999', instagram: 'barbearia_roque', horarios, fidelidadeMeta: META, diasAgenda: 14,
+      whatsapp: '5527999999999', instagram: 'barbearia_roque', dono: { nome: 'Luciano Roque', foto: 'luciano-roque' }, horarios, fidelidadeMeta: META, diasAgenda: 14,
       antecedenciaCancelarMin: 120, whatsappModo: 'offline', servicos: banco.servicos.filter((s) => s.ativo !== false), profissionais: PROFS,
     }
   },
@@ -199,10 +198,10 @@ export const apiLocal: Api = {
       await espera()
       if (email.toLowerCase() !== 'dono@roque.local' || senha !== 'roque123') throw new Error('E-mail ou senha incorretos (demo: dono@roque.local / roque123)')
       banco.painel = true; salvar()
-      return { nome: 'Dono', email, papel: 'dono', profissionalId: null }
+      return { nome: 'Luciano Roque', email, papel: 'dono', profissionalId: null }
     },
     sair() { banco.painel = false; salvar() },
-    async eu() { return { nome: 'Dono', email: 'dono@roque.local', papel: 'dono', profissionalId: null } },
+    async eu() { return { nome: 'Luciano Roque', email: 'dono@roque.local', papel: 'dono', profissionalId: null } },
     async resumo(data) {
       await espera()
       const doDia = banco.agendamentos.filter((a) => a.inicio.startsWith(data) && (a.status === 'confirmado' || a.status === 'concluido'))

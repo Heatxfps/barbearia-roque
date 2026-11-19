@@ -16,10 +16,10 @@ O ideal é ter **dois aparelhos**: o seu celular (cliente) e um notebook ou tabl
 ## Na reunião
 
 1. **Abra o app pelo ícone e fique em silêncio.** A parede acende e a logo se monta. É o momento "uau".
-2. **"Esse é o app da Roque, não de uma plataforma genérica."**
-3. **Entregue o celular ao dono** e peça para ele marcar um corte:
-   serviço → profissional → dia → horário → WhatsApp → código → confirmar.
-   *"Sem senha, sem baixar nada da loja, e ninguém precisou responder WhatsApp."*
+2. **"Esse é o app da Roque, não de uma plataforma genérica."** Role a tela inicial devagar: os retratos do Daniel e do Guilherme, o cardápio de serviços e o Dia do Noivo.
+3. **Entregue o celular ao Luciano** e peça para ele tocar na foto de um dos barbeiros e marcar um corte:
+   serviço → dia → horário → WhatsApp → código → confirmar.
+   *"Sem senha, sem baixar nada da loja, e o Daniel não precisou largar a tesoura para responder WhatsApp."*
 4. **Vire o notebook:** o horário apareceu na agenda do painel. Na aba **WhatsApp**, a mensagem de confirmação que o cliente recebeu.
 5. **Painel, aba Agenda:**
    - Números do dia e do mês, faltas e quanto vem pelo app
@@ -29,7 +29,8 @@ O ideal é ter **dois aparelhos**: o seu celular (cliente) e um notebook ou tabl
 6. **Clientes para chamar de volta:** *"quem sumiu há 20 dias recebe lembrete automático. Isso é dinheiro voltando sozinho."*
 7. **Ajustes:** mude o preço de um serviço e mostre no celular que já mudou.
 8. **No celular, Meus horários:** remarcar e cancelar; o horário volta a ficar livre.
-9. Pare e pergunte: **"O que mais te ajudaria no dia a dia?"** Anote e coloque na proposta.
+9. **Aba "A Roque":** a seção do fundador, com a foto dele, e o link do **Dia do Noivo**. O pedido de orçamento já sai pronto no WhatsApp da casa.
+10. Pare e pergunte: **"O que mais te ajudaria no dia a dia?"** Anote e coloque na proposta.
 
 ## Depois
 

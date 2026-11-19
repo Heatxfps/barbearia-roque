@@ -2,7 +2,8 @@ import type { Navegar } from '../App'
 import Icone from '../components/Icone'
 import { api } from '../api'
 import { useApp } from '../contexto'
-import { formatarTelefone, linkWhats } from '../util'
+import { foto, formatarTelefone, linkWhats } from '../util'
+import { Ornamento } from './Inicio'
 
 const B = import.meta.env.BASE_URL
 const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -25,6 +26,28 @@ export default function Perfil({ navegar }: { navegar: Navegar }) {
         tradicional em Nova Venécia.
       </p>
 
+      {barbearia.dono && (
+        <>
+          <Ornamento texto="O fundador" />
+          <section className="fundador">
+            {barbearia.dono.foto && <img src={foto(barbearia.dono.foto)} alt={barbearia.dono.nome} loading="lazy" />}
+            <div className="fundador__texto">
+              <p className="sobretitulo">Fundador</p>
+              <h2 className="titulo-editorial pequeno-ed">{barbearia.dono.nome}</h2>
+              <p className="suave">
+                Clássico na essência, moderno no estilo. À frente da Roque, {barbearia.dono.nome.split(' ')[0]} une a tradição
+                da barbearia a um olhar atual, no ambiente, no atendimento e em cada detalhe.
+              </p>
+            </div>
+          </section>
+        </>
+      )}
+
+      <button className="item" onClick={() => navegar('noivo')}>
+        <div className="item__com-avatar"><Icone nome="fidelidade" /><div><strong>Dia do Noivo</strong><span className="suave">Making of e cuidado completo para o grande dia</span></div></div>
+        <Icone nome="seta" />
+      </button>
+
       <div className="lista">
         <a className="item" href={linkWhats(barbearia.whatsapp)} target="_blank" rel="noreferrer">
           <div className="item__com-avatar"><Icone nome="whats" /><div><strong>WhatsApp</strong><span className="suave">Fale com a gente</span></div></div>
@@ -40,7 +63,7 @@ export default function Perfil({ navegar }: { navegar: Navegar }) {
         </a>
       </div>
 
-      <h2 className="secao">Horário de funcionamento</h2>
+      <Ornamento texto="Horários" />
       <section className="cartao horarios">
         {DIAS.map((d, i) => {
           const x = barbearia.horarios[i]

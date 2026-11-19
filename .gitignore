@@ -12,3 +12,6 @@ server/dados/
 server/.env
 
 .env
+
+# fotos originais em alta resolução (o app usa os recortes de public/img/equipe)
+originais/equipe/

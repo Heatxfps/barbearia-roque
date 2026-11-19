@@ -17,3 +17,9 @@ export const formatarTelefone = (t: string) => {
 }
 
 export const linkWhats = (tel: string, texto?: string) => `https://wa.me/${tel.replace(/\D/g, '')}${texto ? `?text=${encodeURIComponent(texto)}` : ''}`
+
+/** Foto da equipe em public/img/equipe: retrato 3:4 ou avatar quadrado */
+export const foto = (nome: string, tipo: 'retrato' | 'avatar' = 'retrato') =>
+  `${import.meta.env.BASE_URL}img/equipe/${nome}${tipo === 'avatar' ? '-avatar' : ''}.jpg`
+
+export const primeiroNome = (nome: string) => nome.trim().split(/\s+/)[0]

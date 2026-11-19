@@ -7,10 +7,12 @@ import MeusHorarios from './screens/MeusHorarios'
 import Fidelidade from './screens/Fidelidade'
 import Perfil from './screens/Perfil'
 import Painel from './screens/painel/Painel'
+import Noivo from './screens/Noivo'
 import { ProvedorApp, useApp } from './contexto'
 
 export type Aba = 'inicio' | 'agenda' | 'fidelidade' | 'perfil'
-export type Navegar = (destino: Aba | 'agendar' | 'painel', servicoId?: string) => void
+export type OpcoesAgendar = { servicoId?: string; profissionalId?: string }
+export type Navegar = (destino: Aba | 'agendar' | 'painel' | 'noivo', opcoes?: OpcoesAgendar) => void
 
 const lerSessao = (k: string) => { try { return sessionStorage.getItem(k) } catch { return null } }
 
@@ -18,7 +20,7 @@ function Conteudo() {
   const { barbearia, erroCarga, recarregar } = useApp()
   const [splash, setSplash] = useState(() => !lerSessao('roque-splash') && location.hash !== '#painel')
   const [aba, setAba] = useState<Aba>('inicio')
-  const [modal, setModal] = useState<null | { tipo: 'agendar'; servicoId?: string } | { tipo: 'painel' }>(
+  const [modal, setModal] = useState<null | ({ tipo: 'agendar' } & OpcoesAgendar) | { tipo: 'painel' } | { tipo: 'noivo' }>(
     () => (location.hash === '#painel' ? { tipo: 'painel' } : null)
   )
 
@@ -27,8 +29,9 @@ function Conteudo() {
     setSplash(false)
   }, [])
 
-  const navegar: Navegar = (destino, servicoId) => {
-    if (destino === 'agendar') setModal({ tipo: 'agendar', servicoId })
+  const navegar: Navegar = (destino, opcoes) => {
+    if (destino === 'agendar') setModal({ tipo: 'agendar', ...opcoes })
+    else if (destino === 'noivo') setModal({ tipo: 'noivo' })
     else if (destino === 'painel') { setModal({ tipo: 'painel' }); history.replaceState(null, '', '#painel') }
     else { setModal(null); setAba(destino); if (location.hash) history.replaceState(null, '', location.pathname) }
     window.scrollTo(0, 0)
@@ -66,7 +69,9 @@ function Conteudo() {
           </div>
         )
       ) : modal?.tipo === 'agendar' ? (
-        <Agendar servicoInicial={modal.servicoId} navegar={navegar} />
+        <Agendar servicoInicial={modal.servicoId} profissionalInicial={modal.profissionalId} navegar={navegar} />
+      ) : modal?.tipo === 'noivo' ? (
+        <Noivo navegar={navegar} />
       ) : (
         <>
           <main className="conteudo" key={aba}>

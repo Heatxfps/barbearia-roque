@@ -144,8 +144,8 @@ test('cliente cancela com antecedência e o horário volta a ficar livre', async
 
 test('bloqueio do dono tira os horários da agenda', async () => {
   const dono = await loginDono()
-  assert.equal((await req('POST', '/api/admin/bloqueios', { profissionalId: 'p3', data: TER, inicio: '09:00', fim: '12:00', motivo: 'Médico' }, dono)).status, 201)
-  const h: string[] = (await req('GET', `/api/horarios?data=${TER}&servico=corte&profissional=p3`)).json.horarios
+  assert.equal((await req('POST', '/api/admin/bloqueios', { profissionalId: 'p1', data: TER, inicio: '09:00', fim: '12:00', motivo: 'Médico' }, dono)).status, 201)
+  const h: string[] = (await req('GET', `/api/horarios?data=${TER}&servico=corte&profissional=p1`)).json.horarios
   assert.ok(!h.includes('09:00') && !h.includes('11:00') && h.includes('13:00'))
 })
 

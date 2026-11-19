@@ -16,7 +16,7 @@ export const config = {
   admin: {
     email: env.ADMIN_EMAIL ?? 'dono@roque.local',
     senha: env.ADMIN_SENHA ?? 'roque123',
-    nome: env.ADMIN_NOME ?? 'Dono',
+    nome: env.ADMIN_NOME ?? 'Luciano Roque',
   },
 
   whatsapp: {

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS profissionais (
   id TEXT PRIMARY KEY,
   nome TEXT NOT NULL,
   especialidade TEXT NOT NULL DEFAULT '',
+  foto TEXT, -- nome do arquivo em public/img/equipe (sem extensão)
   ativo INTEGER NOT NULL DEFAULT 1,
   ordem INTEGER NOT NULL DEFAULT 0
 );
@@ -136,6 +137,8 @@ function semear(db: DB) {
     endereco: 'Endereço a confirmar · Nova Venécia - ES',
     whatsapp: '5527999999999',
     instagram: 'barbearia_roque',
+    dono: 'Luciano Roque',
+    dono_foto: 'luciano-roque',
   }
   const insInfo = db.prepare('INSERT INTO barbearia (chave, valor) VALUES (?, ?)')
   for (const [k, v] of Object.entries(info)) insInfo.run(k, v)
@@ -152,12 +155,12 @@ function semear(db: DB) {
   const insS = db.prepare('INSERT INTO servicos (id, nome, descricao, preco, duracao, destaque, ordem) VALUES (?, ?, ?, ?, ?, ?, ?)')
   servicos.forEach((s, i) => insS.run(...s, i))
 
-  const profs: [string, string, string][] = [
-    ['p1', 'Profissional 1', 'Cortes clássicos e degradê'],
-    ['p2', 'Profissional 2', 'Barba e navalha'],
-    ['p3', 'Profissional 3', 'Química e platinado'],
+  // especialidades a confirmar com a equipe
+  const profs: [string, string, string, string][] = [
+    ['p1', 'Daniel Andrade', 'Barbeiro', 'daniel-andrade'],
+    ['p2', 'Guilherme Moreira', 'Barbeiro', 'guilherme-moreira'],
   ]
-  const insP = db.prepare('INSERT INTO profissionais (id, nome, especialidade, ordem) VALUES (?, ?, ?, ?)')
+  const insP = db.prepare('INSERT INTO profissionais (id, nome, especialidade, foto, ordem) VALUES (?, ?, ?, ?, ?)')
   const insE = db.prepare('INSERT INTO expediente (profissional_id, dia, inicio, fim, intervalo_inicio, intervalo_fim) VALUES (?, ?, ?, ?, ?, ?)')
   profs.forEach((p, i) => {
     insP.run(...p, i)
@@ -169,10 +172,17 @@ function semear(db: DB) {
     .run(novoId(), config.admin.email.toLowerCase(), config.admin.nome, hashSenha(config.admin.senha), 'dono')
 }
 
+/** Ajustes em bancos criados por versões anteriores. */
+function migrar(db: DB) {
+  const cols = (db.prepare('PRAGMA table_info(profissionais)').all() as { name: string }[]).map((c) => c.name)
+  if (!cols.includes('foto')) db.exec('ALTER TABLE profissionais ADD COLUMN foto TEXT')
+}
+
 export function abrirBanco(caminho = config.banco): DB {
   if (caminho !== ':memory:') mkdirSync(dirname(caminho), { recursive: true })
   const db = new DatabaseSync(caminho)
   db.exec(SCHEMA)
+  migrar(db)
   semear(db)
   return db
 }

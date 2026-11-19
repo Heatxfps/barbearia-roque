@@ -35,7 +35,7 @@ export default function MeusHorarios({ navegar }: { navegar: Navegar }) {
     if (!window.confirm(pergunta)) return
     try {
       await api.cancelar(a.id)
-      if (remarcar) navegar('agendar', a.servicoId)
+      if (remarcar) navegar('agendar', { servicoId: a.servicoId, profissionalId: a.profissionalId })
       else { avisar('Horário cancelado'); carregar(); recarregar() }
     } catch (e) { avisar((e as Error).message, 'erro') }
   }
