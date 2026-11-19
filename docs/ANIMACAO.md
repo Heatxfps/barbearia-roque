@@ -30,7 +30,7 @@
    - torna o fundo branco transparente;
    - identifica cada forma da logo (escudo, navalhas, R, poste, tesoura, cada letra) e salva cada uma como um PNG separado em `public/logo-partes/`, todos do mesmo tamanho, para encaixarem perfeitamente uns sobre os outros;
    - gera os ícones do app (`public/img/icone-192.png` e `icone-512.png`).
-2. **`tools/limpar_parede.py`** lê `originais/fachada-interna.png` e apaga o letreiro, preenchendo a área com tijolos clonados da própria parede (`public/img/parede-sem-letreiro.jpg`). Assim a logo animada "acende" no lugar do letreiro, sem duplicar.
+2. **Parede sem letreiro (`public/img/parede-sem-letreiro.jpg`):** desde 19/11/2026 vem de uma foto editada à mão, em alta resolução (`originais/parede-sem-letreiro-nova.jpg`), reduzida para 1200 px. O enquadramento é o mesmo da foto original, então a posição da logo continua calibrada. Assim a logo animada "acende" no lugar do letreiro, sem duplicar. O antigo `tools/limpar_parede.py` (que apagava o letreiro clonando tijolos) ficou como alternativa: **não rode**, ele sobrescreve a foto nova.
 3. **`src/components/Splash.tsx`** + **`src/styles.css`** (seção SPLASH) montam a cena com animações CSS.
 
 Para regerar as imagens (por exemplo, com uma logo em alta resolução):
@@ -39,9 +39,6 @@ Para regerar as imagens (por exemplo, com uma logo em alta resolução):
 python tools/separar_logo.py
 ```
 
-```powershell
-python tools/limpar_parede.py
-```
 
 Requer Python com `pillow`, `numpy` e `scipy`.
 
