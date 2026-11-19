@@ -125,7 +125,7 @@ export const apiLocal: Api = {
     for (let d = 0; d < 7; d++) { const e = EXPEDIENTE[d]; horarios[d] = e ? [e[0], e[1]] : null }
     return {
       nome: 'Barbearia Roque', cidade: 'Nova Venécia - ES', endereco: 'Endereço a confirmar · Nova Venécia - ES',
-      whatsapp: '5527999999999', instagram: 'barbeariaroque', horarios, fidelidadeMeta: META, diasAgenda: 14,
+      whatsapp: '5527999999999', instagram: 'barbearia_roque', horarios, fidelidadeMeta: META, diasAgenda: 14,
       antecedenciaCancelarMin: 120, whatsappModo: 'offline', servicos: banco.servicos.filter((s) => s.ativo !== false), profissionais: PROFS,
     }
   },

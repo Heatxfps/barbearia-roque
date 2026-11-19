@@ -135,7 +135,7 @@ function semear(db: DB) {
     cidade: 'Nova Venécia - ES',
     endereco: 'Endereço a confirmar · Nova Venécia - ES',
     whatsapp: '5527999999999',
-    instagram: 'barbeariaroque',
+    instagram: 'barbearia_roque',
   }
   const insInfo = db.prepare('INSERT INTO barbearia (chave, valor) VALUES (?, ?)')
   for (const [k, v] of Object.entries(info)) insInfo.run(k, v)

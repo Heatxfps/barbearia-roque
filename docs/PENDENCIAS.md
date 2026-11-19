@@ -7,7 +7,7 @@ Os dados de exemplo ficam no servidor: valores iniciais em [`server/src/db.ts`](
 - [ ] Nome do dono (para a abordagem e a proposta)
 - [ ] Endereço completo e link do Google Maps
 - [ ] WhatsApp oficial da barbearia
-- [ ] Instagram oficial (o app usa `@barbeariaroque` como exemplo)
+- [x] Instagram oficial: [@barbearia_roque](https://www.instagram.com/barbearia_roque/)
 - [ ] Horário de funcionamento por dia (incluindo almoço/intervalo)
 - [ ] Ano de fundação / história curta (para a tela "A Roque")
 
