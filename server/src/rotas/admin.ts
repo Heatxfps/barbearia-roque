@@ -5,9 +5,13 @@
  * Números de faturamento, clientes sumidos e ajustes ficam só com o dono.
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import { writeFileSync, mkdirSync } from 'node:fs'
 import { z } from 'zod'
+import { pastaFotos } from '../config.ts'
+import { enviarWhatsApp } from '../whatsapp.ts'
+import { textos } from '../textos.ts'
 import type { DB } from '../db.ts'
-import { conferirSenha, hashSenha, lerBarbearia, novoId } from '../db.ts'
+import { conferirSenha, hashSenha, lerBarbearia, novoId, transacao } from '../db.ts'
 import { exigirAdmin, exigirDono, type Sessao } from '../auth.ts'
 import { agora, carimbo, dataIso, dataValida, horaValida, normalizarTelefone } from '../tempo.ts'
 import { ErroNegocio, cancelarAgendamento, criarAgendamento } from '../servicos-agendamento.ts'
@@ -83,7 +87,7 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
     r.get('/agenda', async (req) => {
       const q = z.object({ data: z.string().refine(dataValida), profissional: z.string().optional() }).parse(req.query)
       const prof = filtroProf(req, q.profissional)
-      const lista = db.prepare(`SELECT a.id, a.inicio, a.fim, a.preco, a.status, a.origem, a.servico_id AS servicoId, s.nome AS servico,
+      const lista = db.prepare(`SELECT a.id, a.inicio, a.fim, a.preco, a.desconto, a.status, a.origem, a.servico_id AS servicoId, s.nome AS servico,
                                        a.profissional_id AS profissionalId, p.nome AS profissional, c.nome AS cliente, c.telefone,
                                        (SELECT COUNT(*) FROM agendamentos x WHERE x.cliente_id = a.cliente_id AND x.status = 'concluido') AS visitas
                                 FROM agendamentos a JOIN servicos s ON s.id = a.servico_id JOIN profissionais p ON p.id = a.profissional_id JOIN clientes c ON c.id = a.cliente_id
@@ -93,7 +97,12 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
                                     FROM bloqueios b JOIN profissionais p ON p.id = b.profissional_id
                                     WHERE b.inicio < ? AND b.fim > ? ${prof ? 'AND b.profissional_id = ?' : ''} ORDER BY b.inicio`)
         .all(...(prof ? [`${q.data} 24:00`, `${q.data} 00:00`, prof] : [`${q.data} 24:00`, `${q.data} 00:00`]))
-      return { data: q.data, agendamentos: lista, bloqueios }
+      const espera = db.prepare(`SELECT e.id, c.nome AS cliente, c.telefone, s.nome AS servico, e.profissional_id AS profissionalId,
+                                        COALESCE(p.nome, 'Sem preferência') AS profissional, e.criado_em AS criadoEm, e.avisado_em AS avisadoEm
+                                 FROM espera e JOIN clientes c ON c.id = e.cliente_id JOIN servicos s ON s.id = e.servico_id
+                                 LEFT JOIN profissionais p ON p.id = e.profissional_id
+                                 WHERE e.data = ? ORDER BY e.criado_em`).all(q.data)
+      return { data: q.data, agendamentos: lista, bloqueios, espera }
     })
 
     r.patch('/agendamentos/:id', async (req) => {
@@ -174,6 +183,43 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       return { ok: true }
     })
 
+    r.delete('/espera/:id', async (req) => {
+      const { id } = z.object({ id: z.string() }).parse(req.params)
+      db.prepare('DELETE FROM espera WHERE id = ?').run(id)
+      return { ok: true }
+    })
+
+    /** Avaliações: média geral, por barbeiro e as mais recentes */
+    r.get('/avaliacoes', async () => {
+      const geral = db.prepare('SELECT ROUND(AVG(nota), 1) AS media, COUNT(*) AS total FROM avaliacoes').get() as { media: number | null; total: number }
+      const porProfissional = db.prepare(`SELECT p.id, p.nome, p.foto, ROUND(AVG(v.nota), 1) AS media, COUNT(*) AS n
+                                          FROM avaliacoes v JOIN profissionais p ON p.id = v.profissional_id GROUP BY p.id ORDER BY media DESC`).all()
+      const recentes = db.prepare(`SELECT v.id, v.nota, v.comentario, v.criado_em AS criadoEm, c.nome AS cliente, p.nome AS profissional
+                                   FROM avaliacoes v JOIN clientes c ON c.id = v.cliente_id JOIN profissionais p ON p.id = v.profissional_id
+                                   ORDER BY v.criado_em DESC LIMIT 30`).all()
+      return { media: geral.media ?? 0, total: geral.total, porProfissional, recentes }
+    })
+
+    // ---------- loja: pedidos (todos atendem o balcão) ----------
+    r.get('/pedidos', async (req) => {
+      const { status } = z.object({ status: z.enum(['abertos', 'todos']).default('abertos') }).parse(req.query)
+      const pedidos = db.prepare(`SELECT o.id, o.status, o.total, o.observacao, o.criado_em AS criadoEm, c.nome AS cliente, c.telefone
+                                  FROM pedidos o JOIN clientes c ON c.id = o.cliente_id
+                                  ${status === 'abertos' ? "WHERE o.status IN ('novo','separado')" : ''} ORDER BY o.criado_em DESC LIMIT 100`).all() as { id: string }[]
+      return pedidos.map((o) => ({ ...o, itens: db.prepare('SELECT nome, preco, qtd FROM pedido_itens WHERE pedido_id = ?').all(o.id) }))
+    })
+
+    r.patch('/pedidos/:id', async (req) => {
+      const { id } = z.object({ id: z.string() }).parse(req.params)
+      const { status } = z.object({ status: z.enum(['novo', 'separado', 'retirado', 'cancelado']) }).parse(req.body)
+      const o = db.prepare('SELECT o.status, c.nome, c.telefone FROM pedidos o JOIN clientes c ON c.id = o.cliente_id WHERE o.id = ?').get(id) as
+        { status: string; nome: string; telefone: string } | undefined
+      if (!o) throw new ErroNegocio('Pedido não encontrado', 404)
+      db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(status, id)
+      if (status === 'separado' && o.status === 'novo') void enviarWhatsApp(db, o.telefone, 'pedido_separado', textos.pedidoSeparado(o.nome, lerBarbearia(db).nome))
+      return { ok: true }
+    })
+
     r.get('/mensagens', async () => db.prepare('SELECT id, telefone, tipo, texto, status, erro, criado_em AS criadoEm FROM mensagens ORDER BY criado_em DESC, rowid DESC LIMIT 60').all())
 
     // ---------- só o dono ----------
@@ -203,11 +249,12 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       })
 
       d.get('/profissionais', async () => {
-        const profs = db.prepare('SELECT * FROM profissionais ORDER BY ordem').all() as { id: string }[]
+        const profs = db.prepare('SELECT * FROM profissionais WHERE removido = 0 ORDER BY ordem').all() as { id: string }[]
         return profs.map((p) => ({ ...p, expediente: db.prepare('SELECT dia, inicio, fim, intervalo_inicio AS intervaloInicio, intervalo_fim AS intervaloFim FROM expediente WHERE profissional_id = ? ORDER BY dia').all(p.id) }))
       })
       const profSchema = z.object({
         nome: z.string().trim().min(2), especialidade: z.string().default(''), ativo: z.boolean().default(true),
+        foto: z.string().max(200).nullable().optional(),
         expediente: z.array(z.object({
           dia: z.number().int().min(0).max(6), inicio: z.string().refine(horaValida), fim: z.string().refine(horaValida),
           intervaloInicio: z.string().refine(horaValida).nullable().optional(), intervaloFim: z.string().refine(horaValida).nullable().optional(),
@@ -223,16 +270,84 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
         const b = profSchema.parse(req.body)
         const id = 'p-' + novoId().slice(0, 6)
         const { m } = db.prepare('SELECT COALESCE(MAX(ordem),0)+1 AS m FROM profissionais').get() as { m: number }
-        db.prepare('INSERT INTO profissionais (id, nome, especialidade, ativo, ordem) VALUES (?, ?, ?, ?, ?)').run(id, b.nome, b.especialidade, +b.ativo, m)
-        salvarExpediente(id, b.expediente)
+        db.prepare('INSERT INTO profissionais (id, nome, especialidade, foto, ativo, ordem) VALUES (?, ?, ?, ?, ?, ?)').run(id, b.nome, b.especialidade, b.foto ?? null, +b.ativo, m)
+        // sem horário informado, começa com o mesmo expediente do primeiro barbeiro
+        if (b.expediente) salvarExpediente(id, b.expediente)
+        else db.prepare(`INSERT INTO expediente (profissional_id, dia, inicio, fim, intervalo_inicio, intervalo_fim)
+                         SELECT ?, dia, inicio, fim, intervalo_inicio, intervalo_fim FROM expediente
+                         WHERE profissional_id = (SELECT id FROM profissionais WHERE removido = 0 AND id != ? ORDER BY ordem LIMIT 1)`).run(id, id)
         return reply.status(201).send({ id })
       })
       d.put('/profissionais/:id', async (req) => {
         const { id } = z.object({ id: z.string() }).parse(req.params)
         const b = profSchema.parse(req.body)
-        const r2 = db.prepare('UPDATE profissionais SET nome = ?, especialidade = ?, ativo = ? WHERE id = ?').run(b.nome, b.especialidade, +b.ativo, id)
+        const r2 = db.prepare('UPDATE profissionais SET nome = ?, especialidade = ?, ativo = ? WHERE id = ? AND removido = 0').run(b.nome, b.especialidade, +b.ativo, id)
         if (!r2.changes) throw new ErroNegocio('Profissional não encontrado', 404)
+        if (b.foto !== undefined) db.prepare('UPDATE profissionais SET foto = ? WHERE id = ?').run(b.foto, id)
         salvarExpediente(id, b.expediente)
+        return { ok: true }
+      })
+
+      /** Excluir barbeiro: some do app e do painel; o histórico continua nos relatórios */
+      d.delete('/profissionais/:id', async (req) => {
+        const { id } = z.object({ id: z.string() }).parse(req.params)
+        const { n } = db.prepare("SELECT COUNT(*) AS n FROM agendamentos WHERE profissional_id = ? AND status = 'confirmado' AND inicio > ?")
+          .get(id, carimbo(agora())) as { n: number }
+        if (n) throw new ErroNegocio(`Ele ainda tem ${n} horário(s) marcado(s). Cancele ou passe para outro barbeiro antes de excluir.`, 409)
+        const { h } = db.prepare('SELECT COUNT(*) AS h FROM agendamentos WHERE profissional_id = ?').get(id) as { h: number }
+        transacao(db, () => {
+          db.prepare("DELETE FROM usuarios WHERE profissional_id = ? AND papel = 'barbeiro'").run(id)
+          db.prepare('DELETE FROM bloqueios WHERE profissional_id = ?').run(id)
+          db.prepare('DELETE FROM espera WHERE profissional_id = ?').run(id)
+          if (h) db.prepare('UPDATE profissionais SET ativo = 0, removido = 1 WHERE id = ?').run(id)
+          else {
+            db.prepare('DELETE FROM avaliacoes WHERE profissional_id = ?').run(id)
+            db.prepare('DELETE FROM profissionais WHERE id = ?').run(id)
+          }
+        })
+        return { ok: true }
+      })
+
+      /** Envio de foto (barbeiro ou produto): o app já manda a imagem reduzida, em base64 */
+      d.post('/fotos', { bodyLimit: 6 * 1024 * 1024 }, async (req, reply) => {
+        const pasta = pastaFotos()
+        if (!pasta) throw new ErroNegocio('Envio de fotos indisponível neste servidor')
+        const { imagem } = z.object({ imagem: z.string().max(8_000_000) }).parse(req.body)
+        const m = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(imagem)
+        if (!m) throw new ErroNegocio('Envie uma imagem JPG, PNG ou WebP')
+        const dados = Buffer.from(m[2], 'base64')
+        const assinatura = { jpeg: [0xff, 0xd8, 0xff], png: [0x89, 0x50, 0x4e, 0x47], webp: [0x52, 0x49, 0x46, 0x46] }[m[1] as 'jpeg' | 'png' | 'webp']
+        if (!assinatura.every((b, i) => dados[i] === b)) throw new ErroNegocio('Arquivo de imagem inválido')
+        if (dados.length > 4 * 1024 * 1024) throw new ErroNegocio('Imagem grande demais (máx. 4 MB)')
+        const nome = `${novoId()}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`
+        mkdirSync(pasta, { recursive: true })
+        writeFileSync(`${pasta}/${nome}`, dados)
+        return reply.status(201).send({ url: `/fotos/${nome}` })
+      })
+
+      // ---------- loja: produtos ----------
+      d.get('/produtos', async () => (db.prepare('SELECT * FROM produtos ORDER BY ordem, nome').all() as { ativo: number }[]).map((p) => ({ ...p, ativo: !!p.ativo })))
+      const produtoSchema = z.object({
+        nome: z.string().trim().min(2).max(60), descricao: z.string().max(120).default(''), preco: z.number().min(0),
+        foto: z.string().max(200).nullable().optional(), ativo: z.boolean().default(true),
+      })
+      d.post('/produtos', async (req, reply) => {
+        const b = produtoSchema.parse(req.body)
+        const id = 'pr-' + novoId().slice(0, 8)
+        const { m } = db.prepare('SELECT COALESCE(MAX(ordem),0)+1 AS m FROM produtos').get() as { m: number }
+        db.prepare('INSERT INTO produtos (id, nome, descricao, preco, foto, ativo, ordem) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, b.nome, b.descricao, b.preco, b.foto ?? null, +b.ativo, m)
+        return reply.status(201).send({ id })
+      })
+      d.put('/produtos/:id', async (req) => {
+        const { id } = z.object({ id: z.string() }).parse(req.params)
+        const b = produtoSchema.parse(req.body)
+        const r2 = db.prepare('UPDATE produtos SET nome = ?, descricao = ?, preco = ?, foto = ?, ativo = ? WHERE id = ?').run(b.nome, b.descricao, b.preco, b.foto ?? null, +b.ativo, id)
+        if (!r2.changes) throw new ErroNegocio('Produto não encontrado', 404)
+        return { ok: true }
+      })
+      d.delete('/produtos/:id', async (req) => {
+        const { id } = z.object({ id: z.string() }).parse(req.params)
+        db.prepare('DELETE FROM produtos WHERE id = ?').run(id)
         return { ok: true }
       })
 
@@ -241,6 +356,8 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
           nome: z.string().min(2), cidade: z.string(), endereco: z.string(),
           whatsapp: z.string().transform((t) => t.replace(/\D/g, '')).refine((t) => t.length >= 12 && t.length <= 13, 'WhatsApp com DDI e DDD, ex.: 5527999999999'),
           instagram: z.string().transform((t) => t.replace(/^@/, '').trim()), dono: z.string(),
+          google_avaliacao: z.string().trim().refine((u) => !u || /^https:\/\//.test(u), 'Cole o link completo, começando com https://'),
+          desconto_aniversario: z.number().int().min(0).max(100).transform(String),
         }).partial().parse(req.body)
         for (const [k, v] of Object.entries(b)) db.prepare('INSERT INTO barbearia (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor').run(k, String(v))
         return lerBarbearia(db)

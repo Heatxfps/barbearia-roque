@@ -18,3 +18,6 @@ originais/equipe/
 
 # backups do banco gerados na VPS
 backups/
+
+# vídeo original em alta (o app usa a versão leve de public/video)
+originais/video/

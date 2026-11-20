@@ -103,6 +103,66 @@ CREATE TABLE IF NOT EXISTS mensagens (
   criado_em TEXT NOT NULL
 );
 
+-- avaliação do cliente depois do atendimento (link mandado no WhatsApp)
+CREATE TABLE IF NOT EXISTS avaliacoes (
+  id TEXT PRIMARY KEY,
+  agendamento_id TEXT NOT NULL UNIQUE REFERENCES agendamentos(id),
+  cliente_id TEXT NOT NULL REFERENCES clientes(id),
+  profissional_id TEXT NOT NULL REFERENCES profissionais(id),
+  nota INTEGER NOT NULL,
+  comentario TEXT NOT NULL DEFAULT '',
+  criado_em TEXT NOT NULL
+);
+
+-- cupons (hoje: aniversário). Aplicados sozinhos no próximo agendamento dentro da validade
+CREATE TABLE IF NOT EXISTS cupons (
+  id TEXT PRIMARY KEY,
+  cliente_id TEXT NOT NULL REFERENCES clientes(id),
+  motivo TEXT NOT NULL,
+  desconto_pct INTEGER NOT NULL,
+  valido_ate TEXT NOT NULL,          -- YYYY-MM-DD
+  agendamento_id TEXT,               -- preenchido quando é usado
+  criado_em TEXT NOT NULL
+);
+
+-- lista de espera: dia lotado → avisa o primeiro da fila quando abrir vaga
+CREATE TABLE IF NOT EXISTS espera (
+  id TEXT PRIMARY KEY,
+  cliente_id TEXT NOT NULL REFERENCES clientes(id),
+  servico_id TEXT NOT NULL REFERENCES servicos(id),
+  profissional_id TEXT NOT NULL,     -- id do barbeiro ou 'qualquer'
+  data TEXT NOT NULL,
+  criado_em TEXT NOT NULL,
+  avisado_em TEXT
+);
+CREATE INDEX IF NOT EXISTS espera_data ON espera(data, criado_em);
+
+-- loja: produtos para reservar e retirar na barbearia (pagamento na retirada)
+CREATE TABLE IF NOT EXISTS produtos (
+  id TEXT PRIMARY KEY,
+  nome TEXT NOT NULL,
+  descricao TEXT NOT NULL DEFAULT '',
+  preco REAL NOT NULL,
+  foto TEXT,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  ordem INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS pedidos (
+  id TEXT PRIMARY KEY,
+  cliente_id TEXT NOT NULL REFERENCES clientes(id),
+  status TEXT NOT NULL DEFAULT 'novo',  -- novo | separado | retirado | cancelado
+  total REAL NOT NULL,
+  observacao TEXT NOT NULL DEFAULT '',
+  criado_em TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS pedido_itens (
+  pedido_id TEXT NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE,
+  produto_id TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  preco REAL NOT NULL,
+  qtd INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS usuarios (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
@@ -174,8 +234,30 @@ function semear(db: DB) {
 
 /** Ajustes em bancos criados por versões anteriores. */
 function migrar(db: DB) {
-  const cols = (db.prepare('PRAGMA table_info(profissionais)').all() as { name: string }[]).map((c) => c.name)
-  if (!cols.includes('foto')) db.exec('ALTER TABLE profissionais ADD COLUMN foto TEXT')
+  const colunas = (t: string) => (db.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).map((c) => c.name)
+  const garantir = (t: string, col: string, def: string) => { if (!colunas(t).includes(col)) db.exec(`ALTER TABLE ${t} ADD COLUMN ${col} ${def}`) }
+  garantir('profissionais', 'foto', 'TEXT')
+  garantir('profissionais', 'removido', 'INTEGER NOT NULL DEFAULT 0')
+  garantir('clientes', 'aniversario', 'TEXT')            // MM-DD
+  garantir('clientes', 'aniversario_ano', 'INTEGER')     // último ano em que ganhou o cupom
+  garantir('agendamentos', 'avaliacao_enviada', 'INTEGER NOT NULL DEFAULT 0')
+  garantir('agendamentos', 'desconto', 'REAL NOT NULL DEFAULT 0')
+}
+
+/** Produtos de exemplo, uma vez só (o dono troca pelo painel). */
+function semearProdutos(db: DB) {
+  if (db.prepare("SELECT 1 FROM barbearia WHERE chave = 'produtos_semeados'").get()) return
+  const vazio = (db.prepare('SELECT COUNT(*) AS n FROM produtos').get() as { n: number }).n === 0
+  if (vazio) {
+    const ins = db.prepare('INSERT INTO produtos (id, nome, descricao, preco, ordem) VALUES (?, ?, ?, ?, ?)')
+    ;([
+      ['pomada', 'Pomada modeladora', 'Fixação forte, efeito seco', 45],
+      ['oleo', 'Óleo para barba', 'Hidrata e perfuma, 30 ml', 40],
+      ['balm', 'Balm pós-barba', 'Acalma a pele depois da navalha', 35],
+      ['shampoo', 'Shampoo para barba', 'Limpeza suave, 150 ml', 38],
+    ] as [string, string, string, number][]).forEach((p, i) => ins.run(...p, i))
+  }
+  db.prepare("INSERT INTO barbearia (chave, valor) VALUES ('produtos_semeados', '1')").run()
 }
 
 export function abrirBanco(caminho = config.banco): DB {
@@ -184,6 +266,7 @@ export function abrirBanco(caminho = config.banco): DB {
   db.exec(SCHEMA)
   migrar(db)
   semear(db)
+  semearProdutos(db)
   return db
 }
 

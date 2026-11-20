@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { Navegar } from '../App'
 import Icone from '../components/Icone'
-import { api, type Agendamento } from '../api'
+import { api, type Agendamento, type Produto } from '../api'
 import { useApp } from '../contexto'
-import { dataLonga, foto, hora, moeda, primeiroNome } from '../util'
+import { dataCurta, dataLonga, foto, hora, moeda, primeiroNome } from '../util'
 
 const B = import.meta.env.BASE_URL
 
@@ -15,6 +15,8 @@ function saudacao() {
 export default function Inicio({ navegar }: { navegar: Navegar }) {
   const { barbearia, cliente } = useApp()
   const [proximo, setProximo] = useState<Agendamento | null>(null)
+  const [produtos, setProdutos] = useState<Produto[]>([])
+  useEffect(() => { api.produtos().then(setProdutos).catch(() => setProdutos([])) }, [])
 
   useEffect(() => {
     if (!cliente) { setProximo(null); return }
@@ -51,6 +53,17 @@ export default function Inicio({ navegar }: { navegar: Navegar }) {
       <button className="botao botao--principal botao--grande botao--brilho" onClick={() => navegar('agendar')}>
         <Icone nome="tesoura" /> Agendar horário
       </button>
+
+      {cliente?.cupom && (
+        <button className="cartao cupom-aviso cartao--botao" onClick={() => navegar('agendar')}>
+          <span className="cupom-aviso__icone">🎂</span>
+          <div>
+            <p className="sobretitulo">Presente de aniversário</p>
+            <h3>{cliente.cupom.desconto}% no seu próximo horário</h3>
+            <p className="suave pequeno">Válido até {dataCurta(cliente.cupom.validoAte)}. O desconto entra sozinho ao agendar.</p>
+          </div>
+        </button>
+      )}
 
       {proximo && (
         <button className="cartao cartao--destaque cartao--botao" onClick={() => navegar('agenda')}>
@@ -102,6 +115,22 @@ export default function Inicio({ navegar }: { navegar: Navegar }) {
           <span className="noivo-chamada__acao">Conhecer <Icone nome="seta" tam={14} /></span>
         </div>
       </button>
+
+      {produtos.length > 0 && (
+        <>
+          <Ornamento texto="Loja da casa" />
+          <div className="vitrine">
+            {produtos.slice(0, 6).map((p) => (
+              <button key={p.id} className="vitrine__item" onClick={() => navegar('loja')}>
+                <div className="produto__foto">{p.foto ? <img src={foto(p.foto)} alt="" loading="lazy" /> : <img className="produto__marca" src={`${import.meta.env.BASE_URL}logo-partes/r-recorte.png`} alt="" />}</div>
+                <strong>{p.nome}</strong>
+                <span className="produto__preco">{moeda(p.preco)}</span>
+              </button>
+            ))}
+          </div>
+          <button className="link" onClick={() => navegar('loja')}>Reservar e retirar na barbearia</button>
+        </>
+      )}
 
       <button className="cartao cartao--botao cartao--fidelidade-mini" onClick={() => navegar('fidelidade')}>
         <div className="linha-entre">

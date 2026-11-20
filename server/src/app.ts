@@ -4,11 +4,11 @@ import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import rateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { ZodError } from 'zod'
 import type { DB } from './db.ts'
-import { config } from './config.ts'
+import { config, pastaFotos } from './config.ts'
 import { ErroNegocio } from './servicos-agendamento.ts'
 import { rotasPublicas } from './rotas/publicas.ts'
 import { rotasCliente } from './rotas/cliente.ts'
@@ -21,7 +21,8 @@ export async function criarApp(db: DB, opcoes: { logger?: boolean } = {}) {
 
   await app.register(cors, { origin: config.origemApp === '*' ? true : config.origemApp.split(',') })
   await app.register(jwt, { secret: config.jwtSegredo })
-  await app.register(rateLimit, { max: 300, timeWindow: '1 minute' })
+  // LIMITE_TENTATIVAS=0 desliga os limites (só nos testes automáticos)
+  await app.register(rateLimit, { max: 300, timeWindow: '1 minute', allowList: () => process.env.LIMITE_TENTATIVAS === '0' })
 
   app.setErrorHandler((erro, _req, reply) => {
     if (erro instanceof ErroNegocio) return reply.status(erro.status).send({ erro: erro.message })
@@ -36,6 +37,13 @@ export async function criarApp(db: DB, opcoes: { logger?: boolean } = {}) {
   await app.register(async (r) => rotasPublicas(r, db), { prefix: '/api' })
   await app.register(async (r) => rotasCliente(r, db), { prefix: '/api' })
   await app.register(async (r) => rotasAdmin(r, db), { prefix: '/api/admin' })
+
+  // fotos enviadas pelo painel (barbeiros e produtos)
+  const fotos = pastaFotos() ? resolve(pastaFotos()) : ''
+  if (fotos) {
+    mkdirSync(fotos, { recursive: true })
+    await app.register(fastifyStatic, { root: fotos, prefix: '/fotos/', decorateReply: false, maxAge: '30d', immutable: true })
+  }
 
   // em produção, o mesmo servidor entrega o app (PWA)
   const pasta = resolve(config.pastaApp)

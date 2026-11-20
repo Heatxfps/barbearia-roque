@@ -3,7 +3,7 @@
  * Imita a API guardando tudo no próprio celular, com dados de demonstração.
  * As regras são as mesmas do servidor (duração, intervalo, conflitos), em versão simplificada.
  */
-import type { Agendamento, Api, Barbearia, Bloqueio, Cliente, DadosBarbearia, ItemAgenda, Mensagem, Servico, Status, UsuarioLista } from './tipos'
+import type { Agendamento, Api, Barbearia, Bloqueio, Cliente, DadosBarbearia, ItemAgenda, Mensagem, Pedido, Produto, Servico, Status, UsuarioLista } from './tipos'
 
 const p2 = (n: number) => String(n).padStart(2, '0')
 const dataIso = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
@@ -34,10 +34,14 @@ const EXPEDIENTE: Record<number, [string, string, string?, string?] | null> = {
 }
 const META = 10
 
-type Ag = { id: string; clienteId: string; profissionalId: string; servicoId: string; inicio: string; fim: string; preco: number; status: Status; origem: 'app' | 'balcao' }
+type Ag = { id: string; clienteId: string; profissionalId: string; servicoId: string; inicio: string; fim: string; preco: number; desconto?: number; status: Status; origem: 'app' | 'balcao' }
 type Banco = {
   servicos: Servico[]
-  clientes: { id: string; nome: string; telefone: string }[]
+  clientes: { id: string; nome: string; telefone: string; aniversario?: string | null; cupomAno?: number }[]
+  produtos?: Produto[]
+  pedidos?: (Pedido & { clienteId: string; observacao: string })[]
+  espera?: { id: string; clienteId: string; servicoId: string; profissionalId: string; data: string; criadoEm: string }[]
+  avaliacoes?: { agendamentoId: string; nota: number; comentario: string; criadoEm: string }[]
   agendamentos: Ag[]
   bloqueios: Omit<Bloqueio, 'profissional'>[]
   mensagens: Mensagem[]
@@ -48,7 +52,7 @@ type Banco = {
   painel?: boolean
 }
 
-const CHAVE = 'roque-offline-v3'
+const CHAVE = 'roque-offline-v4'
 let banco: Banco = carregar()
 
 function carregar(): Banco {
@@ -82,8 +86,23 @@ function semear(): Banco {
       })
     }
   }
+  // avaliações fictícias de parte dos atendimentos concluídos
+  const elogios = ['Atendimento impecável!', 'Melhor degradê da cidade', 'Ambiente top, voltarei', '', '', 'Pontual e caprichoso', '']
+  b.avaliacoes = b.agendamentos.filter((a) => a.status === 'concluido' && rnd() < 0.35)
+    .map((a) => ({ agendamentoId: a.id, nota: rnd() < 0.85 ? 5 : 4, comentario: elogios[Math.floor(rnd() * elogios.length)], criadoEm: a.fim }))
   return b
 }
+
+const PRODUTOS: Produto[] = [
+  { id: 'pomada', nome: 'Pomada modeladora', descricao: 'Fixação forte, efeito seco', preco: 45, ativo: true },
+  { id: 'oleo', nome: 'Óleo para barba', descricao: 'Hidrata e perfuma, 30 ml', preco: 40, ativo: true },
+  { id: 'balm', nome: 'Balm pós-barba', descricao: 'Acalma a pele depois da navalha', preco: 35, ativo: true },
+  { id: 'shampoo', nome: 'Shampoo para barba', descricao: 'Limpeza suave, 150 ml', preco: 38, ativo: true },
+]
+const moedaTxt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+/** offline não roda tarefas: no dia do aniversário o cupom aparece direto */
+const cupomDe = (c: Banco['clientes'][number]) =>
+  c.aniversario && c.aniversario === dataIso(new Date()).slice(5) && c.cupomAno !== new Date().getFullYear() ? { motivo: 'aniversario', desconto: 15, validoAte: dataIso(new Date(Date.now() + 30 * 864e5)) } : null
 
 function horariosDo(prof: string, data: string, duracao: number, agoraD = new Date()): string[] {
   const e = EXPEDIENTE[ler(data).getDay()]
@@ -107,7 +126,7 @@ const livres = (prof: string, data: string, dur: number) =>
 const OFFLINE = 'Na demonstração offline isso fica travado. Funciona na versão com servidor.'
 const dados = (): DadosBarbearia => ({
   nome: 'Barbearia Roque', cidade: 'Nova Venécia - ES', endereco: 'Endereço a confirmar · Nova Venécia - ES',
-  whatsapp: '5527999999999', instagram: 'barbearia_roque', dono: 'Luciano Roque', ...banco.info,
+  whatsapp: '5527999999999', instagram: 'barbearia_roque', dono: 'Luciano Roque', google_avaliacao: '', desconto_aniversario: 15, ...banco.info,
 })
 const DONO: UsuarioLista = { id: 'dono', nome: 'Luciano Roque', email: 'dono@roque.local', papel: 'dono', profissionalId: null }
 const servico = (sid: string) => banco.servicos.find((s) => s.id === sid)!
@@ -121,7 +140,7 @@ function eu(): Cliente | null {
   const c = banco.sessao ? cliente(banco.sessao) : undefined
   if (!c) return null
   const n = banco.agendamentos.filter((a) => a.clienteId === c.id && a.status === 'concluido').length
-  return { ...c, fidelidade: { selos: n % META, meta: META, premiosConquistados: Math.floor(n / META), totalAtendimentos: n } }
+  return { ...c, fidelidade: { selos: n % META, meta: META, premiosConquistados: Math.floor(n / META), totalAtendimentos: n }, cupom: cupomDe(c) }
 }
 
 export const apiLocal: Api = {
@@ -130,9 +149,9 @@ export const apiLocal: Api = {
     await espera()
     const horarios: Barbearia['horarios'] = {}
     for (let d = 0; d < 7; d++) { const e = EXPEDIENTE[d]; horarios[d] = e ? [e[0], e[1]] : null }
-    const { dono, ...info } = dados()
+    const { dono, google_avaliacao, desconto_aniversario, ...info } = dados()
     return {
-      ...info, dono: { nome: dono, foto: 'luciano-roque' }, horarios, fidelidadeMeta: META, diasAgenda: 14,
+      ...info, dono: { nome: dono, foto: 'luciano-roque' }, googleAvaliacao: google_avaliacao, descontoAniversario: desconto_aniversario, horarios, fidelidadeMeta: META, diasAgenda: 14,
       antecedenciaCancelarMin: 120, whatsappModo: 'offline', servicos: banco.servicos.filter((s) => s.ativo !== false), profissionais: PROFS,
     }
   },
@@ -156,14 +175,14 @@ export const apiLocal: Api = {
     salvar()
     return { jaCliente: banco.clientes.some((c) => c.telefone.endsWith(tel)), codigoDemo: codigo }
   },
-  async verificar(telefone, codigo, nome) {
+  async verificar(telefone, codigo, nome, aniversario) {
     await espera()
     const tel = telefone.replace(/\D/g, '')
     if (!banco.codigo || banco.codigo.telefone !== tel || banco.codigo.codigo !== codigo) throw new Error('Código incorreto')
     let c = banco.clientes.find((x) => x.telefone.endsWith(tel))
     if (!c) {
       if (!nome) throw new Error('Informe seu nome')
-      c = { id: id(), nome, telefone: '55' + tel }
+      c = { id: id(), nome, telefone: '55' + tel, aniversario: aniversario ?? null }
       banco.clientes.push(c)
     } else if (nome) c.nome = nome
     banco.sessao = c.id
@@ -173,10 +192,21 @@ export const apiLocal: Api = {
   },
   async eu() { return eu() },
   sair() { banco.sessao = undefined; salvar() },
+  async atualizarPerfil(d) {
+    const c = banco.sessao ? cliente(banco.sessao) : undefined
+    if (!c) throw new Error('Entre de novo')
+    if (d.nome) c.nome = d.nome
+    if (d.aniversario !== undefined) c.aniversario = d.aniversario
+    salvar()
+  },
 
   async meusAgendamentos() {
     await espera()
-    return { agora: carimbo(new Date()), agendamentos: banco.agendamentos.filter((a) => a.clienteId === banco.sessao).sort((a, b) => b.inicio.localeCompare(a.inicio)).map(paraAgendamento) }
+    return {
+      agora: carimbo(new Date()),
+      agendamentos: banco.agendamentos.filter((a) => a.clienteId === banco.sessao).sort((a, b) => b.inicio.localeCompare(a.inicio))
+        .map((a) => ({ ...paraAgendamento(a), avaliacao: banco.avaliacoes?.find((v) => v.agendamentoId === a.id)?.nota ?? null })),
+    }
   },
   async agendar(d) {
     await espera()
@@ -185,22 +215,72 @@ export const apiLocal: Api = {
     if (prof === 'qualquer') prof = PROFS.find((p) => horariosDo(p.id, d.data, sv.duracao).includes(d.hora))?.id ?? ''
     if (!prof || !horariosDo(prof, d.data, sv.duracao).includes(d.hora)) throw new Error('Esse horário acabou de ser ocupado. Escolha outro.')
     const inicio = `${d.data} ${d.hora}`
-    const a: Ag = { id: id(), clienteId: banco.sessao!, profissionalId: prof, servicoId: sv.id, inicio, fim: carimbo(new Date(ler(inicio).getTime() + sv.duracao * 60000)), preco: sv.preco, status: 'confirmado', origem: 'app' }
+    const c = cliente(banco.sessao!)!
+    const cupom = cupomDe(c)
+    const desconto = cupom ? Math.round(sv.preco * cupom.desconto) / 100 : 0
+    if (cupom) c.cupomAno = new Date().getFullYear()
+    const a: Ag = { id: id(), clienteId: c.id, profissionalId: prof, servicoId: sv.id, inicio, fim: carimbo(new Date(ler(inicio).getTime() + sv.duracao * 60000)), preco: sv.preco - desconto, desconto, status: 'confirmado', origem: 'app' }
     banco.agendamentos.push(a)
-    const c = cliente(a.clienteId)!
+    banco.espera = (banco.espera ?? []).filter((e) => !(e.clienteId === c.id && e.data === d.data))
     msg(c.telefone, 'confirmacao', `Fala, ${c.nome.split(' ')[0]}! ✂️ Seu horário de *${sv.nome}* está confirmado para ${inicio.slice(8, 10)}/${inicio.slice(5, 7)} às ${d.hora}.`)
     msg(dados().whatsapp, 'aviso_novo', `📲 *Novo horário pelo app*
 ${c.nome} · ${sv.nome}
 👤 ${nomeProf(prof)}
 📅 ${inicio.slice(8, 10)}/${inicio.slice(5, 7)} às ${d.hora}`)
     salvar()
-    return { id: a.id, profissionalId: prof, inicio }
+    return { id: a.id, profissionalId: prof, inicio, desconto }
   },
   async cancelar(aid) {
     const a = banco.agendamentos.find((x) => x.id === aid && x.clienteId === banco.sessao)
     if (!a) throw new Error('Agendamento não encontrado')
     if (a.inicio < carimbo(new Date(Date.now() + 120 * 60000))) throw new Error('Cancelamentos pelo app só até 2h antes. Fale com a barbearia pelo WhatsApp.')
     a.status = 'cancelado'
+    salvar()
+  },
+
+  async minhaEspera() {
+    const hoje = dataIso(new Date())
+    return (banco.espera ?? []).filter((e) => e.clienteId === banco.sessao && e.data >= hoje)
+      .map((e) => ({ id: e.id, data: e.data, servicoId: e.servicoId, servico: servico(e.servicoId).nome, profissionalId: e.profissionalId, profissional: e.profissionalId === 'qualquer' ? 'Sem preferência' : nomeProf(e.profissionalId), avisadoEm: null }))
+  },
+  async entrarEspera(d) {
+    if (livres(d.profissionalId, d.data, servico(d.servicoId).duracao).length) throw new Error('Ainda tem horário livre nesse dia. É só escolher!')
+    banco.espera = [...(banco.espera ?? []).filter((e) => !(e.clienteId === banco.sessao && e.data === d.data)), { id: id(), clienteId: banco.sessao!, ...d, criadoEm: carimbo(new Date()) }]
+    salvar()
+    return { posicao: banco.espera.filter((e) => e.data === d.data).length }
+  },
+  async sairEspera(eid) { banco.espera = (banco.espera ?? []).filter((e) => e.id !== eid); salvar() },
+
+  async produtos() { await espera(); return (banco.produtos ?? PRODUTOS).filter((p) => p.ativo !== false) },
+  async pedir(itens, observacao = '') {
+    const c = cliente(banco.sessao!)!
+    const lista = itens.map((i) => { const p = (banco.produtos ?? PRODUTOS).find((x) => x.id === i.produtoId); if (!p) throw new Error('Produto indisponível'); return { nome: p.nome, preco: p.preco, qtd: i.qtd } })
+    const total = lista.reduce((t, i) => t + i.preco * i.qtd, 0)
+    const ped = { id: id(), clienteId: c.id, status: 'novo' as const, total, criadoEm: carimbo(new Date()), itens: lista, observacao }
+    banco.pedidos = [ped, ...(banco.pedidos ?? [])]
+    const resumo = lista.map((i) => `• ${i.qtd}× ${i.nome}`).join('\n')
+    msg(c.telefone, 'pedido', `${c.nome.split(' ')[0]}, seu pedido foi recebido! 🛍️\n${resumo}\nTotal: *${moedaTxt(total)}*, pago na retirada.`)
+    msg(dados().whatsapp, 'aviso_pedido', `🛍️ *Novo pedido para retirar*\n${c.nome}\n${resumo}\nTotal: ${moedaTxt(total)}`)
+    salvar()
+    return { id: ped.id, total }
+  },
+  async meusPedidos() { return (banco.pedidos ?? []).filter((o) => o.clienteId === banco.sessao) },
+  async cancelarPedido(pid) {
+    const o = (banco.pedidos ?? []).find((x) => x.id === pid && x.clienteId === banco.sessao)
+    if (!o || o.status !== 'novo') throw new Error('Esse pedido já foi separado. Fale com a barbearia.')
+    o.status = 'cancelado'; salvar()
+  },
+
+  async avaliacao(aid) {
+    const a = banco.agendamentos.find((x) => x.id === aid && x.status === 'concluido')
+    if (!a) throw new Error('Atendimento não encontrado')
+    const v = banco.avaliacoes?.find((x) => x.agendamentoId === aid)
+    const p = PROFS.find((x) => x.id === a.profissionalId)
+    return { id: a.id, inicio: a.inicio, servico: servico(a.servicoId).nome, profissional: p?.nome ?? '', foto: p?.foto ?? null, cliente: cliente(a.clienteId)!.nome.split(' ')[0], nota: v?.nota ?? null, comentario: v?.comentario ?? null, googleAvaliacao: dados().google_avaliacao }
+  },
+  async avaliar(aid, nota, comentario) {
+    if (banco.avaliacoes?.some((v) => v.agendamentoId === aid)) throw new Error('Esse atendimento já foi avaliado. Obrigado!')
+    banco.avaliacoes = [...(banco.avaliacoes ?? []), { agendamentoId: aid, nota, comentario, criadoEm: carimbo(new Date()) }]
     salvar()
   },
 
@@ -249,8 +329,28 @@ ${c.nome} · ${sv.nome}
       const ags: ItemAgenda[] = banco.agendamentos.filter((a) => a.inicio.startsWith(data) && ok(a.profissionalId)).sort((a, b) => a.inicio.localeCompare(b.inicio))
         .map((a) => { const c = cliente(a.clienteId)!; return { ...paraAgendamento(a), origem: a.origem, cliente: c.nome, telefone: c.telefone, visitas: banco.agendamentos.filter((x) => x.clienteId === c.id && x.status === 'concluido').length } })
       const bloqueios = banco.bloqueios.filter((b) => b.inicio.startsWith(data) && ok(b.profissionalId)).map((b) => ({ ...b, profissional: nomeProf(b.profissionalId) }))
-      return { agendamentos: ags, bloqueios }
+      const esp = (banco.espera ?? []).filter((e) => e.data === data).map((e) => {
+        const c = cliente(e.clienteId)!
+        return { id: e.id, cliente: c.nome, telefone: c.telefone, servico: servico(e.servicoId).nome, profissionalId: e.profissionalId, profissional: e.profissionalId === 'qualquer' ? 'Sem preferência' : nomeProf(e.profissionalId), criadoEm: e.criadoEm, avisadoEm: null }
+      })
+      return { agendamentos: ags, bloqueios, espera: esp }
     },
+    async removerEspera(eid) { banco.espera = (banco.espera ?? []).filter((e) => e.id !== eid); salvar() },
+    async avaliacoes() {
+      const lista = (banco.avaliacoes ?? []).map((v) => ({ v, a: banco.agendamentos.find((x) => x.id === v.agendamentoId)! })).filter((x) => x.a)
+      const media = (ns: number[]) => (ns.length ? Math.round((ns.reduce((t, n) => t + n, 0) / ns.length) * 10) / 10 : 0)
+      return {
+        media: media(lista.map((x) => x.v.nota)), total: lista.length,
+        porProfissional: PROFS.map((p) => { const ns = lista.filter((x) => x.a.profissionalId === p.id).map((x) => x.v.nota); return { id: p.id, nome: p.nome, foto: p.foto, media: media(ns), n: ns.length } }).filter((p) => p.n),
+        recentes: lista.sort((x, y) => y.v.criadoEm.localeCompare(x.v.criadoEm)).slice(0, 30)
+          .map((x) => ({ id: x.v.agendamentoId, nota: x.v.nota, comentario: x.v.comentario, criadoEm: x.v.criadoEm, cliente: cliente(x.a.clienteId)!.nome, profissional: nomeProf(x.a.profissionalId) })),
+      }
+    },
+    async pedidos(todos) {
+      return (banco.pedidos ?? []).filter((o) => todos || o.status === 'novo' || o.status === 'separado')
+        .map((o) => { const c = cliente(o.clienteId)!; return { ...o, cliente: c.nome, telefone: c.telefone } })
+    },
+    async statusPedido(pid, st) { const o = (banco.pedidos ?? []).find((x) => x.id === pid); if (o) o.status = st; salvar() },
     async status(aid, status) { const a = banco.agendamentos.find((x) => x.id === aid); if (a) a.status = status; salvar() },
     async encaixe(d) {
       const sv = servico(d.servicoId)
@@ -288,6 +388,16 @@ ${c.nome} · ${sv.nome}
       return PROFS.map((p) => ({ ...p, ativo: true, expediente: exp }))
     },
     async salvarProfissional() { throw new Error(OFFLINE) },
+    async criarProfissional() { throw new Error(OFFLINE) },
+    async removerProfissional() { throw new Error(OFFLINE) },
+    async enviarFoto() { throw new Error(OFFLINE) },
+    async produtosPainel() { return banco.produtos ?? PRODUTOS },
+    async salvarProduto(pid, d) {
+      const lista = banco.produtos ?? PRODUTOS
+      banco.produtos = pid ? lista.map((x) => (x.id === pid ? { ...x, ...d } : x)) : [...lista, { ...d, id: id() }]
+      salvar()
+    },
+    async removerProduto(pid) { banco.produtos = (banco.produtos ?? PRODUTOS).filter((x) => x.id !== pid); salvar() },
     async usuarios() { return [DONO, ...(banco.usuarios ?? [])] },
     async criarUsuario(d) {
       if ([DONO, ...(banco.usuarios ?? [])].some((u) => u.email === d.email.toLowerCase())) throw new Error('Esse e-mail já tem acesso')

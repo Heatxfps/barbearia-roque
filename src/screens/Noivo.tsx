@@ -23,7 +23,11 @@ export default function Noivo({ navegar }: { navegar: Navegar }) {
   return (
     <div className="tela">
       <header className="noivo-hero" style={{ backgroundImage: `url(${B}img/dia-do-noivo.jpg)` }}>
+        {/* making of real da Roque, em loop e sem som; a foto do terno fica de capa enquanto carrega */}
+        <video className="noivo-hero__video" src={`${B}video/dia-do-noivo.mp4`} poster={`${B}img/dia-do-noivo.jpg`}
+          autoPlay muted loop playsInline preload="auto" aria-hidden="true" />
         <div className="noivo-hero__sombra" />
+        <span className="noivo-hero__credito">Vídeo: @emillypereira.n</span>
         <button className="icone-botao noivo-hero__voltar" onClick={() => navegar('inicio')} aria-label="Voltar"><Icone nome="voltar" /></button>
         <div className="noivo-hero__texto">
           <p className="sobretitulo">Experiência exclusiva</p>

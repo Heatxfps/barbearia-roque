@@ -4,13 +4,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Navegar } from '../../App'
 import Icone from '../../components/Icone'
-import { api, type Bloqueio, type ClientePainel, type ItemAgenda, type Mensagem, type Profissional, type Resumo, type Status, type UsuarioPainel } from '../../api'
+import { api, type Bloqueio, type ClientePainel, type EsperaPainel, type ItemAgenda, type Mensagem, type Profissional, type Resumo, type ResumoAvaliacoes, type Status, type UsuarioPainel } from '../../api'
 import { useApp } from '../../contexto'
 import { dataCurta, dataIso, dataLonga, foto, formatarTelefone, hora, lerData, linkWhats, moeda, primeiroNome } from '../../util'
 import Ajustes from './Ajustes'
 import Divulgacao from './Divulgacao'
+import LojaPainel from './LojaPainel'
 
-type Aba = 'hoje' | 'clientes' | 'whatsapp' | 'divulgacao' | 'ajustes'
+type Aba = 'hoje' | 'clientes' | 'loja' | 'whatsapp' | 'divulgacao' | 'ajustes'
 
 export default function Painel({ navegar }: { navegar: Navegar }) {
   const { avisar } = useApp()
@@ -29,7 +30,7 @@ export default function Painel({ navegar }: { navegar: Navegar }) {
   if (!usuario) return <Login aoEntrar={setUsuario} voltar={() => navegar('perfil')} />
 
   const dono = usuario.papel === 'dono'
-  const abas: [Aba, string][] = [['hoje', 'Agenda'], ['clientes', 'Clientes'], ['whatsapp', 'WhatsApp'], ['divulgacao', 'Divulgação'], ['ajustes', 'Ajustes']]
+  const abas: [Aba, string][] = [['hoje', 'Agenda'], ['clientes', 'Clientes'], ['loja', 'Loja'], ['whatsapp', 'WhatsApp'], ['divulgacao', 'Divulgação'], ['ajustes', 'Ajustes']]
 
   return (
     <div className="painel">
@@ -50,6 +51,7 @@ export default function Painel({ navegar }: { navegar: Navegar }) {
       {aba === 'hoje' && <AbaAgenda usuario={usuario} avisar={avisar} />}
       {aba === 'clientes' && <AbaClientes />}
       {aba === 'whatsapp' && <AbaWhatsApp />}
+      {aba === 'loja' && <LojaPainel usuario={usuario} />}
       {aba === 'divulgacao' && <Divulgacao />}
       {aba === 'ajustes' && <Ajustes usuario={usuario} />}
     </div>
@@ -89,7 +91,7 @@ function AbaAgenda({ usuario, avisar }: { usuario: UsuarioPainel; avisar: (t: st
   const [data, setData] = useState(dataIso(new Date()))
   const [filtro, setFiltro] = useState('todos')
   const [resumo, setResumo] = useState<Resumo | null>(null)
-  const [agenda, setAgenda] = useState<{ agendamentos: ItemAgenda[]; bloqueios: Bloqueio[] } | null>(null)
+  const [agenda, setAgenda] = useState<{ agendamentos: ItemAgenda[]; bloqueios: Bloqueio[]; espera?: EsperaPainel[] } | null>(null)
   const [form, setForm] = useState<null | 'encaixe' | 'bloqueio'>(null)
 
   const carregar = useCallback(() => {
@@ -165,10 +167,27 @@ function AbaAgenda({ usuario, avisar }: { usuario: UsuarioPainel; avisar: (t: st
           ) : <LinhaTempo itens={ativos} bloqueios={agenda.bloqueios} marcar={marcar} liberar={liberar} mostrarProf />
         )}
         {cancelados.length > 0 && <p className="suave pequeno">{cancelados.length} cancelado(s) neste dia</p>}
+
+        {!!agenda?.espera?.length && (
+          <div className="cartao espera-painel">
+            <div className="linha-entre"><h3>Lista de espera do dia</h3><span className="badge">{agenda.espera.length}</span></div>
+            <p className="suave pequeno">Se abrir uma vaga, o app avisa o primeiro da fila no WhatsApp; 30 min depois, o próximo.</p>
+            {agenda.espera.map((e, i) => (
+              <div key={e.id} className="linha-entre espera-painel__linha">
+                <div><strong>{i + 1}. {e.cliente}</strong><span className="suave pequeno"> · {e.servico} · {e.profissional}{e.avisadoEm ? ` · avisado às ${hora(e.avisadoEm)}` : ''}</span></div>
+                <div className="evento__acoes">
+                  <a className="chip" href={linkWhats(e.telefone)} target="_blank" rel="noreferrer">WhatsApp</a>
+                  <button className="chip" onClick={async () => { await api.painel.removerEspera(e.id); carregar() }}>Tirar</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {resumo && usuario.papel === 'dono' && (
         <aside className="painel__col">
+          <Avaliacoes />
           <h2 className="secao">Clientes para chamar de volta</h2>
           <p className="suave pequeno">Há 20+ dias sem cortar e sem horário marcado. O app manda o lembrete sozinho.</p>
           <div className="lista">
@@ -352,7 +371,7 @@ function LinhaTempo({ itens, bloqueios, marcar, liberar, mostrarProf }: { itens:
             <span className="evento__hora">{hora(x.a.inicio)}<small>{hora(x.a.fim)}</small></span>
             <div className="evento__corpo">
               <strong>{x.a.cliente} {x.a.visitas === 0 && <span className="badge">1ª vez</span>}</strong>
-              <span className="suave">{x.a.servico}{mostrarProf ? ` · ${primeiroNome(x.a.profissional)}` : ''} · {moeda(x.a.preco)} · {x.a.origem === 'balcao' ? 'balcão' : 'app'}</span>
+              <span className="suave">{x.a.servico}{mostrarProf ? ` · ${primeiroNome(x.a.profissional)}` : ''} · {moeda(x.a.preco)}{x.a.desconto ? ' 🎂' : ''} · {x.a.origem === 'balcao' ? 'balcão' : 'app'}</span>
               <div className="evento__acoes">
                 {x.a.status === 'confirmado' ? (
                   <>
@@ -381,5 +400,37 @@ function LinhaTempo({ itens, bloqueios, marcar, liberar, mostrarProf }: { itens:
           </div>
         ))}
     </div>
+  )
+}
+
+/** Notas dos clientes depois do atendimento */
+function Avaliacoes() {
+  const [r, setR] = useState<ResumoAvaliacoes | null>(null)
+  useEffect(() => { api.painel.avaliacoes().then(setR).catch(() => setR(null)) }, [])
+  if (!r) return null
+  return (
+    <>
+      <h2 className="secao">Avaliações dos clientes</h2>
+      {r.total === 0 ? <p className="suave pequeno">O app pede a nota 1 hora depois de cada atendimento concluído. As primeiras aparecem aqui.</p> : (
+        <div className="cartao avaliacoes">
+          <div className="avaliacoes__media">
+            <strong>{r.media.toFixed(1).replace('.', ',')}</strong>
+            <div><span className="estrelas-txt">{'★'.repeat(Math.round(r.media))}{'☆'.repeat(5 - Math.round(r.media))}</span><span className="suave pequeno">{r.total} avaliações</span></div>
+          </div>
+          {r.porProfissional.map((p) => (
+            <div key={p.id} className="linha-entre pequeno">
+              <span className="filtro-foto">{p.foto && <img src={foto(p.foto, 'avatar')} alt="" />}{p.nome}</span>
+              <span><strong>{p.media.toFixed(1).replace('.', ',')}</strong> <span className="suave">({p.n})</span></span>
+            </div>
+          ))}
+          {r.recentes.filter((v) => v.comentario).slice(0, 4).map((v) => (
+            <blockquote key={v.id} className="avaliacoes__comentario">
+              <span className="estrelas-txt">{'★'.repeat(v.nota)}</span> “{v.comentario}”
+              <cite>{primeiroNome(v.cliente)} sobre {primeiroNome(v.profissional)}</cite>
+            </blockquote>
+          ))}
+        </div>
+      )}
+    </>
   )
 }

@@ -14,6 +14,10 @@ const caminhos: Record<string, string> = {
   painel: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   mais: 'M12 5v14M5 12h14',
   seta: 'M9 5l7 7-7 7',
+  sacola: 'M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2',
+  estrela: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z',
+  lixo: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',
+  camera: 'M4 8h3l2-3h6l2 3h3v11H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
 }
 
 export default function Icone({ nome, tam = 22 }: { nome: keyof typeof caminhos | string; tam?: number }) {

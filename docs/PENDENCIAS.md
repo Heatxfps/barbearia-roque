@@ -28,10 +28,17 @@ Os dados de exemplo ficam no servidor: valores iniciais em [`server/src/db.ts`](
 - [ ] Trabalham por comissão? (afeta o painel do dono)
 - [ ] E-mail de cada barbeiro para criar o acesso ao painel (Ajustes → Acessos)
 
+## Loja, avaliações e aniversário
+
+- [ ] Quais produtos vendem, preço e foto de cada um (os 4 do app são exemplos)
+- [ ] Link de avaliação do Perfil da Empresa no Google (Ajustes → A barbearia)
+- [ ] Desconto de aniversário: 15% está bom? Vale para qualquer serviço?
+
 ## Dia do Noivo
 
 - [ ] O que entra no pacote (a tela traz uma sugestão: making of, corte e barba, padrinhos, ritual completo)
-- [ ] Fotos ou vídeos de making of anteriores para a galeria
+- [x] Vídeo de making of (atrás do título da página, crédito @emillypereira.n)
+- [ ] Autorização da videomaker para usar o vídeo no app
 - [ ] Faixa de preço, ou manter "sob consulta"
 
 ## Regras

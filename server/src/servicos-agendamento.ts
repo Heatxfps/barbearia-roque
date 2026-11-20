@@ -3,8 +3,8 @@ import type { DB } from './db.ts'
 import { lerBarbearia, novoId, transacao } from './db.ts'
 import { escolherProfissional, fimDoServico, horariosDoProfissional } from './agenda.ts'
 import { config } from './config.ts'
-import { agora, carimbo, somarMin } from './tempo.ts'
-import { enviarWhatsApp } from './whatsapp.ts'
+import { agora, carimbo, dataIso, somarMin } from './tempo.ts'
+import { enviarWhatsApp, type TipoMensagem } from './whatsapp.ts'
 import { textos } from './textos.ts'
 
 export class ErroNegocio extends Error {
@@ -39,10 +39,16 @@ export function criarAgendamento(db: DB, dados: {
         throw new ErroNegocio('Esse horário acabou de ser ocupado. Escolha outro.', 409)
     }
     const inicio = `${dados.data} ${dados.hora}`
-    db.prepare(`INSERT INTO agendamentos (id, cliente_id, profissional_id, servico_id, inicio, fim, preco, origem, criado_em)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(id, dados.clienteId, prof, servico.id, inicio, fimDoServico(dados.data, dados.hora, servico.duracao), servico.preco, dados.origem, carimbo(agora()))
-    return { id, profissionalId: prof, inicio }
+    // cupom (aniversário) entra sozinho, se o horário cair dentro da validade
+    const cupom = cupomAtivo(db, dados.clienteId, dados.data)
+    const desconto = cupom ? Math.round(servico.preco * cupom.desconto_pct) / 100 : 0
+    db.prepare(`INSERT INTO agendamentos (id, cliente_id, profissional_id, servico_id, inicio, fim, preco, desconto, origem, criado_em)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, dados.clienteId, prof, servico.id, inicio, fimDoServico(dados.data, dados.hora, servico.duracao), servico.preco - desconto, desconto, dados.origem, carimbo(agora()))
+    if (cupom) db.prepare('UPDATE cupons SET agendamento_id = ? WHERE id = ?').run(id, cupom.id)
+    // conseguiu horário nesse dia: sai da lista de espera dele
+    db.prepare('DELETE FROM espera WHERE cliente_id = ? AND data = ?').run(dados.clienteId, dados.data)
+    return { id, profissionalId: prof, inicio, desconto }
   })
   if (dados.origem === 'app') {
     void notificar(db, id, 'confirmacao')
@@ -64,6 +70,8 @@ export function cancelarAgendamento(db: DB, id: string, porCliente?: string) {
     }
   }
   db.prepare("UPDATE agendamentos SET status = 'cancelado' WHERE id = ?").run(id)
+  // o cupom usado nesse horário volta a valer
+  db.prepare('UPDATE cupons SET agendamento_id = NULL WHERE agendamento_id = ?').run(id)
   void notificar(db, id, 'cancelamento')
   if (porCliente) void avisarBarbearia(db, id, 'cancelou')
 }
@@ -92,13 +100,27 @@ export async function notificar(db: DB, id: string, tipo: 'confirmacao' | 'cance
 /** Avisa o WhatsApp da própria barbearia quando o cliente marca ou cancela pelo app,
  *  para quem está no balcão saber na hora (desligue com AVISAR_BARBEARIA=0). */
 export async function avisarBarbearia(db: DB, id: string, tipo: 'novo' | 'cancelou') {
-  if (!config.avisarBarbearia) return
   const d = detalhe(db, id)
-  const b = lerBarbearia(db)
-  const destino = (b.whatsapp ?? '').replace(/\D/g, '')
-  if (!d || destino.length < 12) return
-  const info = { ...d, barbearia: b.nome }
-  await enviarWhatsApp(db, destino, tipo === 'novo' ? 'aviso_novo' : 'aviso_cancelou', tipo === 'novo' ? textos.avisoNovo(info) : textos.avisoCancelou(info))
+  if (!d) return
+  const info = { ...d, barbearia: lerBarbearia(db).nome }
+  await avisarBarbeariaTexto(db, tipo === 'novo' ? 'aviso_novo' : 'aviso_cancelou', tipo === 'novo' ? textos.avisoNovo(info) : textos.avisoCancelou(info))
+}
+
+/** Manda um texto para o WhatsApp da própria barbearia (se o número estiver configurado). */
+export async function avisarBarbeariaTexto(db: DB, tipo: TipoMensagem, texto: string) {
+  if (!config.avisarBarbearia) return
+  const destino = (lerBarbearia(db).whatsapp ?? '').replace(/\D/g, '')
+  if (destino.length < 12) return
+  await enviarWhatsApp(db, destino, tipo, texto)
+}
+
+export type Cupom = { id: string; motivo: string; desconto_pct: number; valido_ate: string }
+
+/** Cupom ainda não usado e válido para um horário na data informada (padrão: hoje). */
+export function cupomAtivo(db: DB, clienteId: string, data = dataIso(agora())): Cupom | undefined {
+  return db.prepare(`SELECT id, motivo, desconto_pct, valido_ate FROM cupons
+                     WHERE cliente_id = ? AND agendamento_id IS NULL AND valido_ate >= ? AND substr(criado_em,1,10) <= ?
+                     ORDER BY desconto_pct DESC LIMIT 1`).get(clienteId, data, data) as Cupom | undefined
 }
 
 /** Selos do cartão fidelidade = atendimentos concluídos (o ciclo recomeça a cada meta). */

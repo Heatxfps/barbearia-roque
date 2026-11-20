@@ -18,8 +18,30 @@ export const formatarTelefone = (t: string) => {
 
 export const linkWhats = (tel: string, texto?: string) => `https://wa.me/${tel.replace(/\D/g, '')}${texto ? `?text=${encodeURIComponent(texto)}` : ''}`
 
-/** Foto da equipe em public/img/equipe: retrato 3:4 ou avatar quadrado */
+/** Foto: as da equipe original ficam em public/img/equipe (retrato 3:4 ou avatar);
+ *  as enviadas pelo painel chegam como endereço ("/fotos/abc.jpg") e servem para os dois usos. */
 export const foto = (nome: string, tipo: 'retrato' | 'avatar' = 'retrato') =>
-  `${import.meta.env.BASE_URL}img/equipe/${nome}${tipo === 'avatar' ? '-avatar' : ''}.jpg`
+  /^(\/|https?:)/.test(nome) ? nome : `${import.meta.env.BASE_URL}img/equipe/${nome}${tipo === 'avatar' ? '-avatar' : ''}.jpg`
+
+/** Reduz a foto escolhida no celular (até 900 px, JPEG) antes de enviar */
+export function lerImagem(arquivo: File, max = 900): Promise<string> {
+  return new Promise((ok, falha) => {
+    const img = new Image()
+    const url = URL.createObjectURL(arquivo)
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height))
+      const c = document.createElement('canvas')
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
+      URL.revokeObjectURL(url)
+      ok(c.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); falha(new Error('Não deu para abrir essa imagem')) }
+    img.src = url
+  })
+}
+
+/** "03-25" → "25/03" */
+export const aniversarioTxt = (mmdd: string) => `${mmdd.slice(3, 5)}/${mmdd.slice(0, 2)}`
 
 export const primeiroNome = (nome: string) => nome.trim().split(/\s+/)[0]

@@ -2,7 +2,9 @@ import type { Navegar } from '../App'
 import Icone from '../components/Icone'
 import { api } from '../api'
 import { useApp } from '../contexto'
-import { foto, formatarTelefone, linkWhats } from '../util'
+import { useState } from 'react'
+import CampoAniversario, { aniversarioOk } from '../components/CampoAniversario'
+import { aniversarioTxt, foto, formatarTelefone, linkWhats } from '../util'
 import { Ornamento } from './Inicio'
 
 const B = import.meta.env.BASE_URL
@@ -43,6 +45,10 @@ export default function Perfil({ navegar }: { navegar: Navegar }) {
         </>
       )}
 
+      <button className="item" onClick={() => navegar('loja')}>
+        <div className="item__com-avatar"><Icone nome="sacola" /><div><strong>Loja da Roque</strong><span className="suave">Reserve pelo app e retire na barbearia</span></div></div>
+        <Icone nome="seta" />
+      </button>
       <button className="item" onClick={() => navegar('noivo')}>
         <div className="item__com-avatar"><Icone nome="fidelidade" /><div><strong>Dia do Noivo</strong><span className="suave">Making of e cuidado completo para o grande dia</span></div></div>
         <Icone nome="seta" />
@@ -76,21 +82,49 @@ export default function Perfil({ navegar }: { navegar: Navegar }) {
         })}
       </section>
 
-      {cliente && (
-        <>
-          <Ornamento texto="Sua conta" />
-          <section className="cartao">
-            <strong>{cliente.nome}</strong>
-            <p className="suave">{formatarTelefone(cliente.telefone)}</p>
-            <button className="botao botao--fantasma pequeno" onClick={() => { api.sair(); definirCliente(null) }}>Sair</button>
-          </section>
-        </>
-      )}
+      {cliente && <SuaConta />}
 
       <button className="botao botao--fantasma" onClick={() => navegar('painel')}>
         <Icone nome="painel" /> Área da barbearia
       </button>
       <p className="rodape">v1.0 · {api.modo === 'local' ? 'modo demonstração offline' : 'conectado'}</p>
     </div>
+  )
+}
+
+function SuaConta() {
+  const { cliente, definirCliente, barbearia, avisar } = useApp()
+  const [editando, setEditando] = useState(false)
+  const [aniv, setAniv] = useState(cliente?.aniversario ?? '')
+  if (!cliente) return null
+  const salvar = async () => {
+    try {
+      await api.atualizarPerfil({ aniversario: aniversarioOk(aniv) ? aniv : null })
+      definirCliente(await api.eu()); setEditando(false); avisar('Aniversário salvo')
+    } catch (e) { avisar((e as Error).message, 'erro') }
+  }
+  return (
+    <>
+      <Ornamento texto="Sua conta" />
+      <section className="cartao">
+        <strong>{cliente.nome}</strong>
+        <p className="suave">{formatarTelefone(cliente.telefone)}</p>
+        {editando ? (
+          <>
+            <CampoAniversario valor={aniv} mudar={setAniv} rotulo="Aniversário" />
+            <div className="acoes">
+              <button className="botao botao--principal pequeno" disabled={!!aniv && !aniversarioOk(aniv)} onClick={salvar}>Salvar</button>
+              <button className="botao botao--fantasma pequeno" onClick={() => setEditando(false)}>Cancelar</button>
+            </div>
+          </>
+        ) : (
+          <button className="item item--compacto" onClick={() => setEditando(true)}>
+            <span>🎂 {cliente.aniversario ? `Aniversário: ${aniversarioTxt(cliente.aniversario)}` : `Cadastre seu aniversário${barbearia?.descontoAniversario ? ` e ganhe ${barbearia.descontoAniversario}%` : ''}`}</span>
+            <span className="suave pequeno">{cliente.aniversario ? 'alterar' : 'cadastrar'}</span>
+          </button>
+        )}
+        <button className="botao botao--fantasma pequeno" onClick={() => { api.sair(); definirCliente(null) }}>Sair</button>
+      </section>
+    </>
   )
 }

@@ -36,8 +36,8 @@ export const apiHttp: Api = {
   horarios: async (data, servico, profissional) => (await chamar<{ horarios: string[] }>('GET', `/horarios?${qs({ data, servico, profissional })}`)).horarios,
 
   pedirCodigo: (telefone) => chamar('POST', '/auth/codigo', { telefone }),
-  async verificar(telefone, codigo, nome) {
-    const r = await chamar<{ token: string }>('POST', '/auth/verificar', { telefone, codigo, nome })
+  async verificar(telefone, codigo, nome, aniversario) {
+    const r = await chamar<{ token: string }>('POST', '/auth/verificar', { telefone, codigo, nome, aniversario })
     gravar(CH_CLIENTE, r.token)
     return chamar<Cliente>('GET', '/me')
   },
@@ -46,10 +46,23 @@ export const apiHttp: Api = {
     try { return await chamar<Cliente>('GET', '/me') } catch { return null }
   },
   sair: () => gravar(CH_CLIENTE, null),
+  atualizarPerfil: async (d) => { await chamar('PUT', '/me', d) },
 
   meusAgendamentos: () => chamar('GET', '/me/agendamentos'),
   agendar: (d) => chamar('POST', '/me/agendamentos', d),
   cancelar: async (id) => { await chamar('POST', `/me/agendamentos/${id}/cancelar`, {}) },
+
+  minhaEspera: () => chamar('GET', '/me/espera'),
+  entrarEspera: (d) => chamar('POST', '/me/espera', d),
+  sairEspera: async (id) => { await chamar('DELETE', `/me/espera/${id}`) },
+
+  produtos: () => chamar('GET', '/produtos'),
+  pedir: (itens, observacao) => chamar('POST', '/me/pedidos', { itens, observacao }),
+  meusPedidos: () => chamar('GET', '/me/pedidos'),
+  cancelarPedido: async (id) => { await chamar('POST', `/me/pedidos/${id}/cancelar`, {}) },
+
+  avaliacao: (id) => chamar('GET', `/avaliacao/${encodeURIComponent(id)}`),
+  avaliar: async (id, nota, comentario) => { await chamar('POST', `/avaliacao/${encodeURIComponent(id)}`, { nota, comentario }) },
 
   painel: {
     logado: () => !!ler(CH_PAINEL),
@@ -62,6 +75,10 @@ export const apiHttp: Api = {
     eu: () => p('GET', '/admin/eu'),
     resumo: (data) => p('GET', `/admin/resumo?${qs({ data })}`),
     agenda: (data, profissional) => p('GET', `/admin/agenda?${qs({ data, profissional })}`),
+    removerEspera: async (id) => { await p('DELETE', `/admin/espera/${id}`) },
+    avaliacoes: () => p('GET', '/admin/avaliacoes'),
+    pedidos: (todos) => p('GET', `/admin/pedidos?status=${todos ? 'todos' : 'abertos'}`),
+    statusPedido: async (id, status) => { await p('PATCH', `/admin/pedidos/${id}`, { status }) },
     status: async (id, status) => { await p('PATCH', `/admin/agendamentos/${id}`, { status }) },
     encaixe: async (d) => { await p('POST', '/admin/agendamentos', d) },
     bloquear: async (d) => { await p('POST', '/admin/bloqueios', d) },
@@ -73,6 +90,12 @@ export const apiHttp: Api = {
     salvarBarbearia: async (d) => { await p('PUT', '/admin/barbearia', d) },
     profissionais: async () => (await p<(Record<string, unknown>)[]>('GET', '/admin/profissionais')).map((x) => ({ ...x, ativo: !!x.ativo })) as never,
     salvarProfissional: async (id, d) => { await p('PUT', `/admin/profissionais/${id}`, d) },
+    criarProfissional: async (d) => { await p('POST', '/admin/profissionais', d) },
+    removerProfissional: async (id) => { await p('DELETE', `/admin/profissionais/${id}`) },
+    enviarFoto: async (imagem) => (await p<{ url: string }>('POST', '/admin/fotos', { imagem })).url,
+    produtosPainel: () => p('GET', '/admin/produtos'),
+    salvarProduto: async (id, d) => { await p(id ? 'PUT' : 'POST', id ? `/admin/produtos/${id}` : '/admin/produtos', d) },
+    removerProduto: async (id) => { await p('DELETE', `/admin/produtos/${id}`) },
     usuarios: () => p('GET', '/admin/usuarios'),
     criarUsuario: async (d) => { await p('POST', '/admin/usuarios', d) },
     removerUsuario: async (id) => { await p('DELETE', `/admin/usuarios/${id}`) },

@@ -18,7 +18,8 @@ if (n > 0 && !limpar) {
   console.log('O banco já tem agendamentos. Use --limpar para recriar os dados de demonstração.')
   process.exit(0)
 }
-if (limpar) db.exec('DELETE FROM agendamentos; DELETE FROM clientes; DELETE FROM mensagens; DELETE FROM codigos; DELETE FROM bloqueios;')
+if (limpar) db.exec(`DELETE FROM avaliacoes; DELETE FROM cupons; DELETE FROM espera; DELETE FROM pedido_itens; DELETE FROM pedidos;
+                     DELETE FROM agendamentos; DELETE FROM clientes; DELETE FROM mensagens; DELETE FROM codigos; DELETE FROM bloqueios;`)
 
 // gerador pseudoaleatório fixo (sempre os mesmos dados)
 let semente = 42
@@ -76,10 +77,37 @@ for (let d = -45; d <= 6; d++) {
 }
 definirRelogio(() => new Date())
 
+// avaliações de parte dos atendimentos concluídos (para o painel ter média e comentários)
+const elogios = ['Atendimento impecável, como sempre.', 'Melhor degradê da cidade!', 'Ambiente top e pontualidade.', 'Barba perfeita na navalha.', '', '', '', 'Voltarei com certeza.']
+const concluidos = db.prepare(`SELECT id, cliente_id, profissional_id, fim FROM agendamentos WHERE status = 'concluido' ORDER BY inicio`).all() as
+  { id: string; cliente_id: string; profissional_id: string; fim: string }[]
+const insAv = db.prepare('INSERT INTO avaliacoes (id, agendamento_id, cliente_id, profissional_id, nota, comentario, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?)')
+let avaliacoes = 0
+for (const a of concluidos) {
+  db.prepare('UPDATE agendamentos SET avaliacao_enviada = 1 WHERE id = ?').run(a.id)
+  if (rnd() > 0.4) continue
+  insAv.run(novoId(), a.id, a.cliente_id, a.profissional_id, rnd() < 0.82 ? 5 : rnd() < 0.8 ? 4 : 3, pick(elogios), a.fim)
+  avaliacoes++
+}
+
+// alguns aniversários (um deles hoje, para mostrar o cupom) e pedidos da loja
+const hojeMd = dataIso(hojeReal).slice(5)
+clientes.slice(0, 12).forEach((id, i) => db.prepare('UPDATE clientes SET aniversario = ? WHERE id = ?')
+  .run(i === 0 ? hojeMd : `${String(1 + (i % 12)).padStart(2, '0')}-${String(3 + i * 2).padStart(2, '0')}`, id))
+const produtos = db.prepare('SELECT id, nome, preco FROM produtos WHERE ativo = 1').all() as { id: string; nome: string; preco: number }[]
+if (produtos.length) {
+  ;([[clientes[3], 'novo', 2], [clientes[7], 'separado', 30], [clientes[11], 'retirado', 60 * 26]] as [string, string, number][]).forEach(([cli, status, minAtras], k) => {
+    const itens = [produtos[k % produtos.length], produtos[(k + 1) % produtos.length]].slice(0, k === 1 ? 1 : 2)
+    const id = novoId()
+    db.prepare('INSERT INTO pedidos (id, cliente_id, status, total, criado_em) VALUES (?, ?, ?, ?, ?)').run(id, cli, status, itens.reduce((t, p) => t + p.preco, 0), carimbo(somarMin(hojeReal, -minAtras)))
+    for (const p of itens) db.prepare('INSERT INTO pedido_itens (pedido_id, produto_id, nome, preco, qtd) VALUES (?, ?, ?, ?, 1)').run(id, p.id, p.nome, p.preco)
+  })
+}
+
 // algumas mensagens de exemplo no histórico do WhatsApp
 const msg = db.prepare('INSERT INTO mensagens (id, telefone, tipo, texto, status, criado_em) VALUES (?, ?, ?, ?, ?, ?)')
 msg.run(novoId(), '5527988000000', 'lembrete_24h', 'Oi, João! Lembrete: amanhã tem *Corte* na *Barbearia Roque*…', 'demo', carimbo(somarMin(hojeReal, -20 * 60)))
 msg.run(novoId(), '5527988001371', 'retorno', 'E aí, Marcos! Já faz 24 dias desde o seu último corte na *Barbearia Roque*…', 'demo', carimbo(somarMin(hojeReal, -26 * 60)))
 
-console.log(`✔ Dados de demonstração criados: ${clientes.length} clientes, ${total} agendamentos.`)
+console.log(`✔ Dados de demonstração criados: ${clientes.length} clientes, ${total} agendamentos, ${avaliacoes} avaliações, 3 pedidos.`)
 db.close()

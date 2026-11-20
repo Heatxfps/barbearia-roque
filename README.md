@@ -2,7 +2,7 @@
 
 Aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, login pelo WhatsApp, lembretes automáticos, cartão fidelidade e painel completo para o dono, com a identidade visual premium da casa.
 
-> **Status:** v1.1 premium, com app, painel e servidor completos e testados. Equipe real (Daniel Andrade e Guilherme Moreira) e fundador (Luciano Roque). Serviços e preços ainda são **exemplos**, editáveis pelo painel. Veja [docs/PENDENCIAS.md](docs/PENDENCIAS.md).
+> **Status:** v1.2 premium, com app, painel e servidor completos e testados. Equipe real (Daniel Andrade e Guilherme Moreira) e fundador (Luciano Roque). Serviços e preços ainda são **exemplos**, editáveis pelo painel. Veja [docs/PENDENCIAS.md](docs/PENDENCIAS.md).
 
 **Vitrine (modo offline, sem servidor):** https://heatxfps.github.io/barbearia-roque/ · painel: [`/#painel`](https://heatxfps.github.io/barbearia-roque/#painel) (demo: `dono@roque.local` / `roque123`)
 
@@ -15,22 +15,29 @@ Aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, login 
 - Login **sem senha**: código de 6 dígitos no WhatsApp
 - Meus horários: remarcar, cancelar (até 2 h antes) e histórico
 - Cartão fidelidade com selos reais (10 atendimentos = 1 grátis)
-- **Dia do Noivo**: página do making of de noivo, com pedido de orçamento pronto no WhatsApp
+- **Dia do Noivo**: página com o vídeo do making of atrás do título e pedido de orçamento pronto no WhatsApp
+- **Loja**: o cliente reserva pomada, óleo etc. e retira (e paga) na barbearia
+- **Lista de espera**: dia lotado → entra na fila e é avisado no WhatsApp se abrir vaga
+- **Avaliação** depois do atendimento (estrelas + comentário) com convite para avaliar no Google
+- **Aniversário**: cadastra o dia e ganha um desconto que entra sozinho no próximo horário
 - A Roque: fundador, horário de funcionamento, WhatsApp, Instagram e mapa
 
 **Para a barbearia (painel em `/#painel`)**
-- **Agenda conjunta**: uma coluna por barbeiro, com foto, e ações **concluído**, **faltou**, **cancelar** e WhatsApp do cliente
+- **Agenda conjunta**: uma coluna por barbeiro, com foto, e ações **concluído**, **faltou**, **cancelar** e WhatsApp do cliente; lista de espera do dia
+- **Avaliações**: média geral, por barbeiro e os últimos comentários
+- **Loja**: pedidos para separar ("separado" avisa o cliente) e cadastro de produtos com foto
 - Encaixe de cliente de balcão e **bloqueio** de horários (folga, médico, casa fechada)
 - Números: atendimentos, previsto do dia, faturado no mês, taxa de falta, % marcado pelo app, ranking por profissional e serviço
 - **Clientes para chamar de volta** (20+ dias sem vir)
 - Histórico de todas as mensagens de WhatsApp
 - **Divulgação**: link e QR code do app, cartaz para imprimir e textos prontos para a saudação do WhatsApp Business e a bio do Instagram
-- **Ajustes**: dados da barbearia, serviços e preços, horários de cada barbeiro, acessos e troca de senha (o app atualiza na hora)
+- **Ajustes**: dados da barbearia (link do Google, % do aniversário), serviços e preços, **adicionar e excluir barbeiro com foto**, horários de cada um, acessos e troca de senha (o app atualiza na hora)
 - Acesso de barbeiro: veem e mexem na agenda da casa toda, mas não no faturamento nem nos ajustes
 
 **Automático (servidor)**
 - Para o cliente: confirmação, lembrete 24 h antes, lembrete 1 h antes, aviso de cancelamento e "volte a cortar" pelo WhatsApp
-- Para a barbearia: aviso no WhatsApp da casa a cada horário marcado ou cancelado pelo app
+- Para o cliente: convite para avaliar (1 h depois do atendimento), cupom no aniversário e aviso de vaga da lista de espera
+- Para a barbearia: aviso no WhatsApp da casa a cada horário marcado ou cancelado e a cada pedido da loja
 
 ## Rodar no computador
 

@@ -29,8 +29,10 @@ O ideal é ter **dois aparelhos**: o seu celular (cliente) e um notebook ou tabl
 6. **Clientes para chamar de volta:** *"quem sumiu há 20 dias recebe lembrete automático. Isso é dinheiro voltando sozinho."*
 7. **Ajustes:** mude o preço de um serviço e mostre no celular que já mudou.
 8. **No celular, Meus horários:** remarcar e cancelar; o horário volta a ficar livre.
-9. **Aba "A Roque":** a seção do fundador, com a foto dele, e o link do **Dia do Noivo**. O pedido de orçamento já sai pronto no WhatsApp da casa.
-10. Pare e pergunte: **"O que mais te ajudaria no dia a dia?"** Anote e coloque na proposta.
+9. **Loja e Dia do Noivo:** reserve uma pomada pelo app e mostre o pedido chegando na aba **Loja** do painel. Abra o Dia do Noivo: o vídeo do making of roda atrás do título.
+10. **Painel → Agenda:** mostre o quadro de **Avaliações** (média e comentários): *"isso vira nota no Google também"*.
+11. **Aba "A Roque":** a seção do fundador, com a foto dele, e o link do **Dia do Noivo**. O pedido de orçamento já sai pronto no WhatsApp da casa.
+12. Pare e pergunte: **"O que mais te ajudaria no dia a dia?"** Anote e coloque na proposta.
 
 ## Depois
 

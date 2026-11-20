@@ -10,7 +10,7 @@ import { novoId } from './db.ts'
 import { config } from './config.ts'
 import { agora, carimbo } from './tempo.ts'
 
-export type TipoMensagem = 'codigo' | 'confirmacao' | 'lembrete_24h' | 'lembrete_1h' | 'cancelamento' | 'retorno' | 'aviso_novo' | 'aviso_cancelou'
+export type TipoMensagem = 'codigo' | 'confirmacao' | 'lembrete_24h' | 'lembrete_1h' | 'cancelamento' | 'retorno' | 'aviso_novo' | 'aviso_cancelou' | 'avaliacao' | 'aniversario' | 'espera' | 'pedido' | 'pedido_separado' | 'aviso_pedido'
 
 async function enviarDeVerdade(telefone: string, texto: string): Promise<void> {
   const w = config.whatsapp

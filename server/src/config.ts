@@ -10,6 +10,10 @@ export const config = {
   jwtSegredo: env.JWT_SEGREDO ?? randomBytes(32).toString('hex'),
   /** origem do app (CORS). Vazio = mesma origem. Use * só em desenvolvimento. */
   origemApp: env.ORIGEM_APP ?? '*',
+  /** endereço público do app, usado nos links das mensagens (avaliação, lista de espera) */
+  urlApp: (env.URL_APP ?? `http://localhost:${env.PORTA ?? 3333}`).replace(/\/$/, ''),
+  /** fotos enviadas pelo painel (barbeiros e produtos); padrão: ao lado do banco */
+  pastaFotos: env.PASTA_FOTOS ?? '',
   /** pasta com o build do app (servida junto com a API em produção) */
   pastaApp: env.PASTA_APP ?? '../dist',
 
@@ -37,6 +41,7 @@ export const config = {
     diasAgenda: Number(env.DIAS_AGENDA ?? 21),
     fidelidadeMeta: Number(env.FIDELIDADE_META ?? 10),
     diasRetorno: Number(env.DIAS_RETORNO ?? 20),
+    diasCupom: Number(env.DIAS_CUPOM ?? 30),
   },
 
   /** manda para o WhatsApp da barbearia cada horário marcado/cancelado pelo app */
@@ -48,3 +53,9 @@ export const config = {
 
 if (!env.JWT_SEGREDO) console.warn('⚠️  JWT_SEGREDO não definido: usando um aleatório (logins caem ao reiniciar).')
 if (!env.ADMIN_SENHA) console.warn('⚠️  ADMIN_SENHA não definida: usando a senha padrão de demonstração.')
+
+/** Pasta das fotos enviadas pelo painel. Vazio no banco em memória (testes). */
+export function pastaFotos() {
+  if (config.pastaFotos) return config.pastaFotos
+  return config.banco === ':memory:' ? '' : `${config.banco.replace(/[\\/][^\\/]*$/, '') || '.'}/fotos`
+}

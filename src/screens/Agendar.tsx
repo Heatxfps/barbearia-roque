@@ -132,7 +132,7 @@ export default function Agendar({ servicoInicial, profissionalInicial, navegar }
             {dias?.map((d) => {
               const dt = lerData(d.data)
               return (
-                <button key={d.data} disabled={!d.livres} className={`dia ${data === d.data ? 'dia--sel' : ''}`} onClick={() => { setData(d.data); setHora('') }}>
+                <button key={d.data} className={`dia ${data === d.data ? 'dia--sel' : ''} ${d.livres ? '' : 'dia--lotado'}`} onClick={() => { setData(d.data); setHora('') }}>
                   <span>{dt.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}</span>
                   <strong>{dt.getDate()}</strong>
                   <span>{d.livres ? dt.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '') : 'lotado'}</span>
@@ -148,9 +148,9 @@ export default function Agendar({ servicoInicial, profissionalInicial, navegar }
               {horas.map((h) => <button key={h} className={`hora ${hora === h ? 'hora--sel' : ''}`} onClick={() => setHora(h)}>{h}</button>)}
             </div>
           ) : (
-            <p className="vazio">Sem horários livres neste dia. Tente outra data.</p>
+            <ListaEspera servicoId={servicoId} profissionalId={profId} data={data} />
           )}
-          <button className="botao botao--principal fixo" disabled={!hora} onClick={() => setEtapa(3)}>Continuar</button>
+          {!!horas?.length && <button className="botao botao--principal fixo" disabled={!hora} onClick={() => setEtapa(3)}>Continuar</button>}
         </>
       )}
 
@@ -162,7 +162,12 @@ export default function Agendar({ servicoInicial, profissionalInicial, navegar }
             <div className="linha-entre"><span className="suave">Quando</span><strong className="capitalizar">{dataLonga(data)}, {hora}</strong></div>
             <div className="linha-entre"><span className="suave">Duração</span><strong>{servico.duracao} min</strong></div>
             <hr />
-            <div className="linha-entre total"><span>Total</span><strong>{moeda(servico.preco)}</strong></div>
+            {cliente?.cupom && cliente.cupom.validoAte >= data ? (
+              <>
+                <div className="linha-entre cupom"><span>🎂 Presente de aniversário ({cliente.cupom.desconto}%)</span><strong>−{moeda(Math.round(servico.preco * cliente.cupom.desconto) / 100)}</strong></div>
+                <div className="linha-entre total"><span>Total</span><strong>{moeda(servico.preco - Math.round(servico.preco * cliente.cupom.desconto) / 100)}</strong></div>
+              </>
+            ) : <div className="linha-entre total"><span>Total</span><strong>{moeda(servico.preco)}</strong></div>}
             <p className="suave pequeno">Pagamento na barbearia (Pix, cartão ou dinheiro).</p>
           </section>
 
@@ -187,4 +192,33 @@ function Avatar({ nome, foto: f, qualquer, mini }: { nome: string; foto?: string
   const cls = `avatar avatar--p ${mini ? 'avatar--mini' : ''}`
   if (qualquer) return <div className={cls}><img className="avatar__r" src={`${B}logo-partes/r-recorte.png`} alt="" /></div>
   return f ? <img className={`${cls} avatar--foto`} src={foto(f, 'avatar')} alt="" /> : <div className={cls}>{iniciais(nome)}</div>
+}
+
+/** Dia lotado: entra na fila e é avisado no WhatsApp se alguém desmarcar */
+function ListaEspera({ servicoId, profissionalId, data }: { servicoId: string; profissionalId: string; data: string }) {
+  const { cliente, avisar } = useApp()
+  const [pos, setPos] = useState<number | null>(null)
+  const [enviando, setEnviando] = useState(false)
+  useEffect(() => setPos(null), [data])
+  const entrar = async () => {
+    setEnviando(true)
+    try { setPos((await api.entrarEspera({ servicoId, profissionalId, data })).posicao) } catch (e) { avisar((e as Error).message, 'erro') } finally { setEnviando(false) }
+  }
+  if (pos !== null) {
+    return (
+      <div className="cartao espera espera--ok">
+        <h3>Você está na lista de espera ✓</h3>
+        <p className="suave">Posição {pos} para {dataLonga(data).split(',')[0]}. Se alguém desmarcar, você recebe uma mensagem no WhatsApp e tem 30 minutos para garantir o horário.</p>
+      </div>
+    )
+  }
+  return (
+    <div className="cartao espera">
+      <h3>Dia lotado</h3>
+      <p className="suave">Entre na lista de espera: se abrir uma vaga, avisamos você no WhatsApp, por ordem de chegada.</p>
+      {cliente
+        ? <button className="botao botao--principal" disabled={enviando} onClick={entrar}>{enviando ? 'Entrando…' : 'Entrar na lista de espera'}</button>
+        : <Entrar textoBotao="Continuar" aoEntrar={() => avisar('Pronto! Agora toque em "Entrar na lista de espera".')} />}
+    </div>
+  )
 }

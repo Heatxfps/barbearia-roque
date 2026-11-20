@@ -5,9 +5,9 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import Icone from '../../components/Icone'
-import { api, type DadosBarbearia, type Expediente, type ProfissionalPainel, type Servico, type UsuarioLista, type UsuarioPainel } from '../../api'
+import { api, type DadosBarbearia, type Expediente, type NovoProfissional, type ProfissionalPainel, type Servico, type UsuarioLista, type UsuarioPainel } from '../../api'
 import { useApp } from '../../contexto'
-import { foto, moeda } from '../../util'
+import { foto, lerImagem, moeda } from '../../util'
 
 type Avisar = (t: string, tipo?: 'ok' | 'erro') => void
 const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -35,10 +35,13 @@ function Barbearia({ avisar }: { avisar: Avisar }) {
   const { barbearia, recarregar } = useApp()
   const [d, setD] = useState<DadosBarbearia | null>(null)
   useEffect(() => {
-    if (barbearia && !d) setD({ nome: barbearia.nome, cidade: barbearia.cidade, endereco: barbearia.endereco, whatsapp: barbearia.whatsapp, instagram: barbearia.instagram, dono: barbearia.dono?.nome ?? '' })
+    if (barbearia && !d) setD({
+      nome: barbearia.nome, cidade: barbearia.cidade, endereco: barbearia.endereco, whatsapp: barbearia.whatsapp, instagram: barbearia.instagram,
+      dono: barbearia.dono?.nome ?? '', google_avaliacao: barbearia.googleAvaliacao ?? '', desconto_aniversario: barbearia.descontoAniversario ?? 15,
+    })
   }, [barbearia, d])
   if (!d) return null
-  const campo = (k: keyof DadosBarbearia, rotulo: string, extra?: React.InputHTMLAttributes<HTMLInputElement>) => (
+  const campo = (k: Exclude<keyof DadosBarbearia, 'desconto_aniversario'>, rotulo: string, extra?: React.InputHTMLAttributes<HTMLInputElement>) => (
     <label className="campo"><span>{rotulo}</span><input value={d[k]} onChange={(e) => setD({ ...d, [k]: e.target.value })} {...extra} /></label>
   )
   const salvar = async () => {
@@ -55,6 +58,12 @@ function Barbearia({ avisar }: { avisar: Avisar }) {
         {campo('whatsapp', 'WhatsApp da barbearia (com 55 e DDD)', { inputMode: 'tel', placeholder: '5527999999999' })}
         <p className="suave pequeno">É para esse número que vai o aviso de cada horário marcado pelo app.</p>
         {campo('instagram', 'Instagram (sem @)')}
+        {campo('google_avaliacao', 'Link de avaliação no Google', { placeholder: 'https://g.page/r/…/review', inputMode: 'url' })}
+        <p className="suave pequeno">No Perfil da Empresa no Google: "Pedir avaliações" → copiar link. Ele aparece para o cliente depois que ele avalia o atendimento.</p>
+        <label className="campo"><span>Desconto de aniversário (%)</span>
+          <input type="number" inputMode="numeric" min={0} max={100} value={d.desconto_aniversario} onChange={(e) => setD({ ...d, desconto_aniversario: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
+        </label>
+        <p className="suave pequeno">O cliente recebe no WhatsApp no dia do aniversário e o desconto entra sozinho no próximo horário (vale 30 dias). Use 0 para desligar.</p>
         <button className="botao botao--principal pequeno" onClick={salvar}>Salvar dados</button>
       </div>
     </>
@@ -118,6 +127,7 @@ function Equipe({ avisar }: { avisar: Avisar }) {
   const { recarregar } = useApp()
   const [profs, setProfs] = useState<ProfissionalPainel[] | null>(null)
   const [aberto, setAberto] = useState<string | null>(null)
+  const [novo, setNovo] = useState(false)
   const carregar = useCallback(() => { api.painel.profissionais().then(setProfs).catch((e) => avisar(e.message, 'erro')) }, [avisar])
   useEffect(() => { carregar() }, [carregar])
 
@@ -129,6 +139,9 @@ function Equipe({ avisar }: { avisar: Avisar }) {
         {profs?.map((p) => aberto === p.id
           ? <EditarProfissional key={p.id} inicial={p} cancelar={() => setAberto(null)} aoSalvar={async (v) => {
               try { await api.painel.salvarProfissional(p.id, v); avisar(`${v.nome}: salvo`); setAberto(null); carregar(); recarregar() } catch (e) { avisar((e as Error).message, 'erro') }
+            }} excluir={async () => {
+              if (!window.confirm(`Excluir ${p.nome}? Ele sai do app e do painel, e o acesso dele ao painel é apagado. O histórico de atendimentos continua nos relatórios.`)) return
+              try { await api.painel.removerProfissional(p.id); avisar(`${p.nome} foi excluído`); setAberto(null); carregar(); recarregar() } catch (e) { avisar((e as Error).message, 'erro') }
             }} />
           : (
             <button key={p.id} className="item" onClick={() => setAberto(p.id)}>
@@ -140,7 +153,49 @@ function Equipe({ avisar }: { avisar: Avisar }) {
             </button>
           ))}
       </div>
+      {novo
+        ? <NovoBarbeiro cancelar={() => setNovo(false)} aoSalvar={async (v) => {
+            try { await api.painel.criarProfissional(v); avisar(`${v.nome} entrou na equipe. Confira os horários dele.`); setNovo(false); carregar(); recarregar() } catch (e) { avisar((e as Error).message, 'erro') }
+          }} />
+        : <button className="botao botao--fantasma" onClick={() => setNovo(true)}><Icone nome="mais" tam={18} /> Adicionar barbeiro</button>}
     </>
+  )
+}
+
+/** Foto redonda com botão para trocar (reduz no celular antes de enviar) */
+function EscolherFoto({ valor, mudar, nome }: { valor: string | null | undefined; mudar: (url: string) => void; nome: string }) {
+  const { avisar } = useApp()
+  const [enviando, setEnviando] = useState(false)
+  const escolher = async (arq?: File) => {
+    if (!arq) return
+    setEnviando(true)
+    try { mudar(await api.painel.enviarFoto(await lerImagem(arq))) } catch (e) { avisar((e as Error).message, 'erro') } finally { setEnviando(false) }
+  }
+  return (
+    <label className="escolher-foto">
+      {valor ? <img src={foto(valor, 'avatar')} alt="" /> : <span className="escolher-foto__vazio">{nome.trim()[0] ?? '?'}</span>}
+      <span className="escolher-foto__acao"><Icone nome="camera" tam={16} /> {enviando ? 'Enviando…' : valor ? 'Trocar foto' : 'Pôr foto'}</span>
+      <input type="file" accept="image/*" hidden onChange={(e) => escolher(e.target.files?.[0])} />
+    </label>
+  )
+}
+
+function NovoBarbeiro({ aoSalvar, cancelar }: { aoSalvar: (p: NovoProfissional) => void; cancelar: () => void }) {
+  const [p, setP] = useState<NovoProfissional>({ nome: '', especialidade: '', ativo: true, foto: null })
+  return (
+    <div className="cartao form">
+      <h3>Novo barbeiro</h3>
+      <EscolherFoto valor={p.foto} mudar={(foto) => setP({ ...p, foto })} nome={p.nome} />
+      <div className="campos-2">
+        <label className="campo"><span>Nome</span><input value={p.nome} onChange={(e) => setP({ ...p, nome: e.target.value })} placeholder="Nome e sobrenome" /></label>
+        <label className="campo"><span>Especialidade</span><input value={p.especialidade} onChange={(e) => setP({ ...p, especialidade: e.target.value })} placeholder="Degradê, barba…" /></label>
+      </div>
+      <p className="suave pequeno">Ele começa com o mesmo horário do primeiro barbeiro da lista. Depois é só ajustar em "editar".</p>
+      <div className="acoes">
+        <button className="botao botao--principal pequeno" disabled={p.nome.trim().length < 2} onClick={() => aoSalvar({ ...p, nome: p.nome.trim() })}>Adicionar</button>
+        <button className="botao botao--fantasma pequeno" onClick={cancelar}>Cancelar</button>
+      </div>
+    </div>
   )
 }
 
@@ -149,17 +204,18 @@ function resumoExpediente(exp: Expediente[]) {
   return dias.length ? `Atende ${dias.join(', ')}` : 'Sem horário definido'
 }
 
-function EditarProfissional({ inicial, aoSalvar, cancelar }: {
-  inicial: ProfissionalPainel; cancelar: () => void
-  aoSalvar: (p: { nome: string; especialidade: string; ativo: boolean; expediente: Expediente[] }) => void
+function EditarProfissional({ inicial, aoSalvar, cancelar, excluir }: {
+  inicial: ProfissionalPainel; cancelar: () => void; excluir: () => void
+  aoSalvar: (p: NovoProfissional & { expediente: Expediente[] }) => void
 }) {
-  const [p, setP] = useState({ nome: inicial.nome, especialidade: inicial.especialidade, ativo: inicial.ativo })
+  const [p, setP] = useState({ nome: inicial.nome, especialidade: inicial.especialidade, ativo: inicial.ativo, foto: inicial.foto ?? null })
   const [dias, setDias] = useState<(Expediente | null)[]>(() => DIAS.map((_, i) => inicial.expediente.find((e) => e.dia === i) ?? null))
   const mudar = (i: number, e: Expediente | null) => setDias(dias.map((x, j) => (j === i ? e : x)))
   const valido = p.nome.trim().length >= 2 && dias.every((e) => !e || (e.inicio < e.fim && (!e.intervaloInicio || (e.intervaloFim && e.intervaloInicio < e.intervaloFim))))
 
   return (
     <div className="cartao form">
+      <EscolherFoto valor={p.foto} mudar={(foto) => setP({ ...p, foto })} nome={p.nome} />
       <div className="campos-2">
         <label className="campo"><span>Nome</span><input value={p.nome} onChange={(e) => setP({ ...p, nome: e.target.value })} /></label>
         <label className="campo"><span>Especialidade</span><input value={p.especialidade} onChange={(e) => setP({ ...p, especialidade: e.target.value })} placeholder="Degradê, barba…" /></label>
@@ -190,6 +246,7 @@ function EditarProfissional({ inicial, aoSalvar, cancelar }: {
       <div className="acoes">
         <button className="botao botao--principal pequeno" disabled={!valido} onClick={() => aoSalvar({ ...p, expediente: dias.filter((d): d is Expediente => !!d) })}>Salvar</button>
         <button className="botao botao--fantasma pequeno" onClick={cancelar}>Cancelar</button>
+        <button className="botao botao--perigo pequeno acoes__direita" onClick={excluir}><Icone nome="lixo" tam={16} /> Excluir</button>
       </div>
     </div>
   )

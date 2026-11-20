@@ -4,3 +4,4 @@ process.env.JOBS = '0'
 process.env.JWT_SEGREDO = 'teste'
 process.env.ADMIN_SENHA = 'senha-teste'
 process.env.WHATSAPP_MODO = 'demo'
+process.env.LIMITE_TENTATIVAS = '0' // os testes fazem muitos logins seguidos

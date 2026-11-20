@@ -5,12 +5,14 @@
 import { useState } from 'react'
 import { api, type Cliente } from '../api'
 import { useApp } from '../contexto'
+import CampoAniversario, { aniversarioOk } from './CampoAniversario'
 
 export default function Entrar({ aoEntrar, textoBotao = 'Receber código no WhatsApp' }: { aoEntrar: (c: Cliente) => void; textoBotao?: string }) {
-  const { avisar, definirCliente } = useApp()
+  const { avisar, definirCliente, barbearia } = useApp()
   const [etapa, setEtapa] = useState<'telefone' | 'codigo'>('telefone')
   const [tel, setTel] = useState('')
   const [nome, setNome] = useState('')
+  const [aniversario, setAniversario] = useState('')
   const [codigo, setCodigo] = useState('')
   const [jaCliente, setJaCliente] = useState(false)
   const [demo, setDemo] = useState<string | undefined>()
@@ -32,7 +34,7 @@ export default function Entrar({ aoEntrar, textoBotao = 'Receber código no What
   const verificar = async () => {
     setCarregando(true)
     try {
-      const c = await api.verificar(tel, codigo, nome.trim() || undefined)
+      const c = await api.verificar(tel, codigo, nome.trim() || undefined, aniversarioOk(aniversario) ? aniversario : undefined)
       definirCliente(c)
       aoEntrar(c)
     } catch (e) { avisar((e as Error).message, 'erro') } finally { setCarregando(false) }
@@ -65,6 +67,12 @@ export default function Entrar({ aoEntrar, textoBotao = 'Receber código no What
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Como podemos te chamar?" autoComplete="name" />
         </label>
       )}
+      {!jaCliente && barbearia?.descontoAniversario ? (
+        <>
+          <CampoAniversario valor={aniversario} mudar={setAniversario} />
+          <p className="suave pequeno">🎂 No seu aniversário você ganha {barbearia.descontoAniversario}% de desconto.</p>
+        </>
+      ) : null}
       <label className="campo">
         <span>Código de 6 dígitos</span>
         <input className="campo-codigo" value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="••••••" />

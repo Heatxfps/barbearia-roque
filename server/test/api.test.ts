@@ -184,3 +184,111 @@ test('agendamento pelo app avisa o WhatsApp da barbearia', async () => {
   const aviso = msgs.find((m) => m.tipo === 'aviso_novo')
   assert.ok(aviso && aviso.telefone === '5527988887777' && aviso.texto.includes('Carlos Teste'))
 })
+
+// ---------------------------------------------------------------------------
+// v1.2: avaliação, aniversário, lista de espera, loja e equipe
+// ---------------------------------------------------------------------------
+const QUA = '2030-03-06'
+const msgsDo = async (tipo: string) =>
+  ((await req('GET', '/api/admin/mensagens', undefined, await loginDono())).json as { tipo: string; telefone: string; texto: string }[]).filter((m) => m.tipo === tipo)
+
+test('avaliação: convite 1h depois do atendimento, nota única e média no painel', async () => {
+  relogio = new Date(2030, 2, 4, 8, 0)
+  const dono = await loginDono()
+  const t = await loginCliente('27996660001', 'Ana Avaliadora')
+  const a = await req('POST', '/api/me/agendamentos', { servicoId: 'barba', profissionalId: 'p2', data: SEG, hora: '10:00' }, t)
+  assert.equal(a.status, 201)
+  assert.equal((await req('PATCH', `/api/admin/agendamentos/${a.json.id}`, { status: 'concluido' }, dono)).status, 200)
+  relogio = new Date(2030, 2, 4, 11, 31) // fim 10:30 + 1h
+  await rodarTarefas(db)
+  const convite = (await msgsDo('avaliacao')).find((m) => m.telefone === '5527996660001')
+  assert.ok(convite?.texto.includes(`#avaliar/${a.json.id}`))
+  const pagina = await req('GET', `/api/avaliacao/${a.json.id}`)
+  assert.equal(pagina.status, 200)
+  assert.equal(pagina.json.nota, null)
+  assert.equal((await req('POST', `/api/avaliacao/${a.json.id}`, { nota: 5, comentario: 'Top' })).status, 201)
+  assert.equal((await req('POST', `/api/avaliacao/${a.json.id}`, { nota: 1 })).status, 409)
+  const av = (await req('GET', '/api/admin/avaliacoes', undefined, dono)).json
+  assert.equal(av.total, 1)
+  assert.equal(av.media, 5)
+  relogio = new Date(2030, 2, 4, 8, 0)
+})
+
+test('aniversário: cupom no dia, uma vez por ano, aplicado sozinho no agendamento', async () => {
+  const t = await loginCliente('27996660002', 'Bruno Aniversariante')
+  assert.equal((await req('PUT', '/api/me', { aniversario: '03-04' }, t)).status, 200)
+  relogio = new Date(2030, 2, 4, 9, 30)
+  await rodarTarefas(db)
+  await rodarTarefas(db)
+  assert.equal((await msgsDo('aniversario')).filter((m) => m.telefone === '5527996660002').length, 1)
+  const me = (await req('GET', '/api/me', undefined, t)).json
+  assert.equal(me.cupom.desconto, 15)
+  const preco = (await req('GET', '/api/barbearia')).json.servicos.find((s: { id: string }) => s.id === 'corte').preco
+  const a = await req('POST', '/api/me/agendamentos', { servicoId: 'corte', profissionalId: 'p1', data: QUA, hora: '16:00' }, t)
+  assert.equal(a.status, 201)
+  assert.equal(a.json.desconto, Math.round(preco * 15) / 100)
+  assert.equal((await req('GET', '/api/me', undefined, t)).json.cupom, null) // já usado
+  relogio = new Date(2030, 2, 4, 8, 0)
+})
+
+test('lista de espera: avisa um por vez, na ordem, quando abre vaga', async () => {
+  const dono = await loginDono()
+  const D = '2030-03-07'
+  assert.equal((await req('POST', '/api/admin/bloqueios', { profissionalId: 'todos', data: D, inicio: '08:00', fim: '21:00', motivo: 'Evento' }, dono)).status, 201)
+  const c1 = await loginCliente('27996660003', 'Caio Primeiro')
+  const c2 = await loginCliente('27996660004', 'Davi Segundo')
+  assert.equal((await req('POST', '/api/me/espera', { servicoId: 'corte', profissionalId: 'qualquer', data: D }, c1)).status, 201)
+  assert.equal((await req('POST', '/api/me/espera', { servicoId: 'corte', profissionalId: 'qualquer', data: D }, c2)).status, 201)
+  // dia com vaga não entra na lista
+  assert.equal((await req('POST', '/api/me/espera', { servicoId: 'corte', profissionalId: 'p1', data: QUA }, c1)).status, 400)
+  const ag = (await req('GET', `/api/admin/agenda?data=${D}`, undefined, dono)).json
+  assert.equal(ag.espera.length, 2)
+  for (const b of ag.bloqueios) await req('DELETE', `/api/admin/bloqueios/${b.id}`, undefined, dono)
+  relogio = new Date(2030, 2, 6, 10, 0)
+  await rodarTarefas(db)
+  relogio = new Date(2030, 2, 6, 10, 15)
+  await rodarTarefas(db)
+  let avisos = (await msgsDo('espera')).map((m) => m.telefone)
+  assert.deepEqual(avisos, ['5527996660003'])
+  relogio = new Date(2030, 2, 6, 10, 31)
+  await rodarTarefas(db)
+  avisos = (await msgsDo('espera')).map((m) => m.telefone)
+  assert.ok(avisos.includes('5527996660004'))
+  relogio = new Date(2030, 2, 4, 8, 0)
+})
+
+test('loja: reservar produtos, avisar a barbearia e marcar como separado', async () => {
+  const dono = await loginDono()
+  const produtos = (await req('GET', '/api/produtos')).json as { id: string; preco: number }[]
+  assert.ok(produtos.length >= 4)
+  const t = await loginCliente('27996660005', 'Edu Comprador')
+  const p = await req('POST', '/api/me/pedidos', { itens: [{ produtoId: produtos[0].id, qtd: 2 }] }, t)
+  assert.equal(p.status, 201)
+  assert.equal(p.json.total, produtos[0].preco * 2)
+  assert.ok((await msgsDo('aviso_pedido')).some((m) => m.texto.includes('Edu Comprador')))
+  const abertos = (await req('GET', '/api/admin/pedidos', undefined, dono)).json as { id: string }[]
+  assert.ok(abertos.some((o) => o.id === p.json.id))
+  assert.equal((await req('PATCH', `/api/admin/pedidos/${p.json.id}`, { status: 'separado' }, dono)).status, 200)
+  assert.equal((await msgsDo('pedido_separado')).length, 1)
+  assert.equal((await req('POST', `/api/me/pedidos/${p.json.id}/cancelar`, {}, t)).status, 400) // já separado
+})
+
+test('equipe: adicionar barbeiro (já com horário) e excluir', async () => {
+  const dono = await loginDono()
+  const novo = await req('POST', '/api/admin/profissionais', { nome: 'Barbeiro Novo', especialidade: 'Degradê' }, dono)
+  assert.equal(novo.status, 201)
+  const pub = (await req('GET', '/api/barbearia')).json
+  assert.ok(pub.profissionais.some((p: { id: string }) => p.id === novo.json.id))
+  const h = (await req('GET', `/api/horarios?data=${QUA}&servico=corte&profissional=${novo.json.id}`)).json.horarios as string[]
+  assert.ok(h.length > 0) // copiou o expediente
+  const t = await loginCliente('27996660006', 'Fabio Cliente')
+  const a = await req('POST', '/api/me/agendamentos', { servicoId: 'corte', profissionalId: novo.json.id, data: QUA, hora: h[0] }, t)
+  assert.equal(a.status, 201)
+  assert.equal((await req('DELETE', `/api/admin/profissionais/${novo.json.id}`, undefined, dono)).status, 409)
+  await req('PATCH', `/api/admin/agendamentos/${a.json.id}`, { status: 'cancelado' }, dono)
+  assert.equal((await req('DELETE', `/api/admin/profissionais/${novo.json.id}`, undefined, dono)).status, 200)
+  const depois = (await req('GET', '/api/barbearia')).json
+  assert.ok(!depois.profissionais.some((p: { id: string }) => p.id === novo.json.id))
+  const equipe = (await req('GET', '/api/admin/profissionais', undefined, dono)).json as { id: string }[]
+  assert.ok(!equipe.some((p) => p.id === novo.json.id))
+})

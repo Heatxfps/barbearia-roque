@@ -5,8 +5,11 @@ services:
     build: .
     restart: unless-stopped
     env_file: server/.env
+    environment:
+      # links das mensagens (avaliação, lista de espera, aniversário) seguem o domínio do .env
+      URL_APP: https://${DOMINIO:?defina DOMINIO no arquivo .env}
     volumes:
-      - dados:/dados
+      - dados:/dados        # banco e fotos enviadas pelo painel
     expose:
       - "3333"
 

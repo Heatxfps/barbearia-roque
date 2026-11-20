@@ -68,7 +68,7 @@ docker compose exec roque node --disable-warning=ExperimentalWarning src/seed-de
    docker compose up -d
    ```
 
-O Caddy pede o certificado novo sozinho. O link e o QR code da aba **Divulgação** passam a usar o domínio novo automaticamente: **reimprima o cartaz**.
+O Caddy pede o certificado novo sozinho, e os links das mensagens (avaliação, lista de espera, aniversário) passam a usar o domínio novo, porque o `docker-compose.yml` monta o `URL_APP` a partir do `DOMINIO`. O link e o QR code da aba **Divulgação** passam a usar o domínio novo automaticamente: **reimprima o cartaz**.
 
 ## Atualizar depois de mudanças no código
 
@@ -80,7 +80,7 @@ docker compose up -d --build
 
 ## Backup do banco
 
-O banco é um arquivo SQLite só. O backup diário já fica agendado pelo `instalar.sh` e guarda 14 dias em `barbearia-roque/backups/`. Para fazer um na hora:
+O banco é um arquivo SQLite só. As fotos enviadas pelo painel (barbeiros e produtos) ficam ao lado dele, em `/dados/fotos`, no mesmo volume. O backup diário já fica agendado pelo `instalar.sh` e guarda 14 dias em `barbearia-roque/backups/`. Para fazer um na hora:
 
 ```bash
 bash deploy/backup.sh

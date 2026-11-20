@@ -586,3 +586,92 @@ body { font-variant-numeric: lining-nums; }
 .cartao-fidelidade { border-color: var(--filete); }
 .selo--ok { background: radial-gradient(circle, rgba(226,178,122,.28), rgba(200,147,90,.08)); }
 .selo--premio { background: var(--ouro); color: #1a120b; border: 0; font-weight: 700; }
+
+/* vídeo do making of atrás do título do Dia do Noivo */
+.noivo-hero { overflow: hidden; }
+.noivo-hero__video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+.noivo-hero__credito { position: absolute; right: 12px; top: calc(20px + env(safe-area-inset-top)); font-size: 10px; letter-spacing: .04em; color: rgba(236,230,218,.55); }
+@media (prefers-reduced-motion: reduce) { .noivo-hero__video { display: none; } }
+
+/* =========================================================
+   v4 — avaliação, aniversário, lista de espera, loja e equipe
+   ========================================================= */
+.campo textarea { font: inherit; font-size: 16px; color: var(--texto); background: var(--superficie); border: 1px solid var(--linha); border-radius: 12px; padding: 12px 14px; outline: none; resize: vertical; }
+.campo textarea:focus, .campo select:focus { border-color: var(--cobre); }
+.acoes { flex-wrap: wrap; }
+.acoes__direita { margin-left: auto; }
+
+/* dia lotado continua clicável (lista de espera) */
+.dia--lotado { opacity: .55; border-style: dashed; }
+.dia--lotado.dia--sel { opacity: 1; }
+.espera { border-color: var(--filete); }
+.espera--ok { border-color: rgba(95,191,127,.45); background: rgba(95,191,127,.06); }
+
+/* cupom de aniversário */
+.cupom-aviso { flex-direction: row; align-items: center; gap: 14px; border-color: var(--filete); background: radial-gradient(circle at 0% 50%, rgba(226,178,122,.18), transparent 60%), var(--superficie); }
+.cupom-aviso__icone { font-size: 34px; }
+.resumo .cupom { color: var(--verde); font-size: 14px; }
+
+/* vitrine na tela inicial */
+.vitrine { display: flex; gap: 10px; overflow-x: auto; margin: 0 -16px; padding: 0 16px 4px; scroll-snap-type: x mandatory; scrollbar-width: none; }
+.vitrine::-webkit-scrollbar { display: none; }
+.vitrine__item { flex: 0 0 132px; scroll-snap-align: start; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.vitrine__item strong { font-family: var(--fonte-ed); font-size: 17px; font-weight: 600; line-height: 1.15; }
+.vitrine .produto__foto { width: 100%; height: auto; aspect-ratio: 1; }
+
+/* loja */
+.produtos { display: flex; flex-direction: column; gap: 10px; }
+.produto { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center; padding: 10px; border-radius: 16px; background: var(--superficie); border: 1px solid var(--linha); min-height: 92px; }
+.produto--sel { border-color: var(--filete); background: linear-gradient(135deg, #2a2119, var(--superficie)); }
+.produto__foto { width: 72px; height: 72px; border-radius: 12px; overflow: hidden; display: grid; place-items: center; background: radial-gradient(circle at 30% 30%, #3a2e22, #1f1913); border: 1px solid var(--filete); }
+.produto__foto img { width: 100%; height: 100%; object-fit: cover; }
+.produto__foto span { font-family: var(--fonte-ed); font-size: 30px; color: var(--cobre-claro); }
+.produto__foto--mini { width: 44px; height: 44px; border-radius: 10px; }
+.produto__foto--mini span { font-size: 20px; }
+.produto__info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.produto__info strong { font-family: var(--fonte-ed); font-size: 19px; font-weight: 600; }
+.produto__info .suave { font-size: 13px; }
+.produto__preco { font-family: var(--fonte-titulo); color: var(--cobre-claro); font-size: 14px; }
+.qtd { display: flex; align-items: center; gap: 6px; }
+.qtd button { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--filete); font-size: 18px; color: var(--cobre-claro); }
+.qtd span { min-width: 18px; text-align: center; font-weight: 600; }
+.qtd .qtd__add { width: auto; height: auto; border-radius: 99px; padding: 7px 12px; font-size: 13px; font-weight: 600; }
+
+/* avaliação */
+.avaliar { gap: 12px; }
+.avaliar__foto { width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(200,147,90,.6); }
+.estrelas { display: flex; gap: 6px; margin: 8px 0; }
+.estrela { font-size: 42px; line-height: 1; color: rgba(236,230,218,.18); transition: transform .15s, color .15s; }
+.estrela--on { color: #e8be86; text-shadow: 0 0 14px rgba(226,178,122,.45); }
+.estrela:active { transform: scale(1.15); }
+.avaliar__comentario { width: 100%; max-width: 340px; text-align: left; }
+.avaliar__google { max-width: 340px; align-items: center; }
+
+/* foto de barbeiro/produto no painel */
+.escolher-foto { display: flex; align-items: center; gap: 12px; cursor: pointer; align-self: flex-start; }
+.escolher-foto img, .escolher-foto__vazio { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 1.5px solid rgba(200,147,90,.55); display: grid; place-items: center; font-family: var(--fonte-ed); font-size: 28px; color: var(--cobre-claro); background: var(--superficie-2); }
+.escolher-foto--quadrada img, .escolher-foto--quadrada .escolher-foto__vazio { border-radius: 12px; }
+.escolher-foto__acao { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--cobre-claro); padding: 7px 12px; border-radius: 99px; border: 1px solid var(--filete); }
+
+/* conta do cliente */
+.item--compacto { padding: 10px 12px; font-size: 14px; }
+
+/* painel: pedidos, espera e avaliações */
+.pedido { gap: 6px; }
+.pedido--novo { border-color: var(--filete); }
+.pedido--retirado, .pedido--cancelado { opacity: .6; }
+.pedido__itens { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.espera-painel { border-style: dashed; border-color: var(--filete); }
+.espera-painel__linha { padding: 6px 0; border-top: 1px solid var(--linha); flex-wrap: wrap; }
+.avaliacoes { gap: 10px; border-color: var(--filete); }
+.avaliacoes__media { display: flex; align-items: center; gap: 12px; }
+.avaliacoes__media > strong { font-family: var(--fonte-ed); font-size: 46px; font-weight: 600; line-height: 1; color: var(--cobre-claro); }
+.avaliacoes__media div { display: flex; flex-direction: column; }
+.estrelas-txt { color: #e8be86; letter-spacing: .08em; }
+.avaliacoes__comentario { margin: 0; padding: 8px 12px; border-left: 2px solid var(--filete); font-family: var(--fonte-ed); font-size: 17px; font-style: italic; }
+.avaliacoes__comentario cite { display: block; font-family: var(--fonte); font-style: normal; font-size: 12px; color: var(--suave); margin-top: 2px; }
+.painel__abas { scrollbar-width: none; }
+.painel__abas::-webkit-scrollbar { display: none; }
+.produto__foto .produto__marca { width: 44%; height: auto; object-fit: contain; opacity: .5; }
+.avaliacoes .filtro-foto { display: inline-flex; align-items: center; gap: 8px; }
+.avaliacoes .filtro-foto img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
