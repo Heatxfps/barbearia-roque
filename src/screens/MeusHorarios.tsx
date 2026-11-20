@@ -10,7 +10,7 @@ import { Ornamento } from './Inicio'
 const ROTULO: Record<string, string> = { concluido: 'Realizado', cancelado: 'Cancelado', faltou: 'Não compareceu', confirmado: 'Confirmado' }
 
 export default function MeusHorarios({ navegar }: { navegar: Navegar }) {
-  const { cliente, avisar, barbearia, recarregar } = useApp()
+  const { cliente, avisar, barbearia, recarregar, confirmar } = useApp()
   const [dados, setDados] = useState<{ agora: string; agendamentos: Agendamento[] } | null>(null)
   const [espera, setEspera] = useState<Espera[]>([])
   const [pedidos, setPedidos] = useState<Pedido[]>([])
@@ -40,7 +40,7 @@ export default function MeusHorarios({ navegar }: { navegar: Navegar }) {
 
   const cancelar = async (a: Agendamento, remarcar = false) => {
     const pergunta = remarcar ? 'Remarcar? O horário atual será liberado e você escolhe um novo.' : 'Cancelar este horário? Ele fica livre para outro cliente.'
-    if (!window.confirm(pergunta)) return
+    if (!(await confirmar(pergunta, { botao: remarcar ? 'Remarcar' : 'Cancelar horário', perigo: !remarcar }))) return
     try {
       await api.cancelar(a.id)
       if (remarcar) navegar('agendar', { servicoId: a.servicoId, profissionalId: a.profissionalId })

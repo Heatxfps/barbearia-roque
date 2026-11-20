@@ -87,7 +87,7 @@ const ROTULO: Record<Status, string> = { confirmado: 'Confirmado', concluido: 'C
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
 function AbaAgenda({ usuario, avisar }: { usuario: UsuarioPainel; avisar: (t: string, tipo?: 'ok' | 'erro') => void }) {
-  const { barbearia } = useApp()
+  const { barbearia, confirmar } = useApp()
   const [data, setData] = useState(dataIso(new Date()))
   const [filtro, setFiltro] = useState('todos')
   const [resumo, setResumo] = useState<Resumo | null>(null)
@@ -102,7 +102,7 @@ function AbaAgenda({ usuario, avisar }: { usuario: UsuarioPainel; avisar: (t: st
 
   const mudarDia = (n: number) => { const d = lerData(data); d.setDate(d.getDate() + n); setData(dataIso(d)) }
   const marcar = async (a: ItemAgenda, s: Status) => {
-    if (s === 'cancelado' && !window.confirm(`Cancelar o horário de ${a.cliente}? Ele recebe um aviso no WhatsApp.`)) return
+    if (s === 'cancelado' && !(await confirmar(`Cancelar o horário de ${a.cliente}? Ele recebe um aviso no WhatsApp.`, { botao: 'Cancelar horário' }))) return
     try { await api.painel.status(a.id, s); avisar(`${a.cliente}: ${ROTULO[s].toLowerCase()}`); carregar() } catch (e) { avisar((e as Error).message, 'erro') }
   }
 

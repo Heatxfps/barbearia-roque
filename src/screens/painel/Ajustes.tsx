@@ -124,7 +124,7 @@ function EditarServico({ inicial, aoSalvar, cancelar }: { inicial: Omit<Servico,
 
 /* ---------------- equipe e horários ---------------- */
 function Equipe({ avisar }: { avisar: Avisar }) {
-  const { recarregar } = useApp()
+  const { recarregar, confirmar } = useApp()
   const [profs, setProfs] = useState<ProfissionalPainel[] | null>(null)
   const [aberto, setAberto] = useState<string | null>(null)
   const [novo, setNovo] = useState(false)
@@ -140,7 +140,7 @@ function Equipe({ avisar }: { avisar: Avisar }) {
           ? <EditarProfissional key={p.id} inicial={p} cancelar={() => setAberto(null)} aoSalvar={async (v) => {
               try { await api.painel.salvarProfissional(p.id, v); avisar(`${v.nome}: salvo`); setAberto(null); carregar(); recarregar() } catch (e) { avisar((e as Error).message, 'erro') }
             }} excluir={async () => {
-              if (!window.confirm(`Excluir ${p.nome}? Ele sai do app e do painel, e o acesso dele ao painel é apagado. O histórico de atendimentos continua nos relatórios.`)) return
+              if (!(await confirmar(`Excluir ${p.nome}? Ele sai do app e do painel, e o acesso dele ao painel é apagado. O histórico de atendimentos continua nos relatórios.`, { botao: 'Excluir barbeiro' }))) return
               try { await api.painel.removerProfissional(p.id); avisar(`${p.nome} foi excluído`); setAberto(null); carregar(); recarregar() } catch (e) { avisar((e as Error).message, 'erro') }
             }} />
           : (
@@ -254,7 +254,7 @@ function EditarProfissional({ inicial, aoSalvar, cancelar, excluir }: {
 
 /* ---------------- acessos ---------------- */
 function Acessos({ avisar }: { avisar: Avisar }) {
-  const { barbearia } = useApp()
+  const { barbearia, confirmar } = useApp()
   const [lista, setLista] = useState<UsuarioLista[] | null>(null)
   const [novo, setNovo] = useState<null | { nome: string; email: string; senha: string; profissionalId: string }>(null)
   const carregar = useCallback(() => { api.painel.usuarios().then(setLista).catch((e) => avisar(e.message, 'erro')) }, [avisar])
@@ -266,7 +266,7 @@ function Acessos({ avisar }: { avisar: Avisar }) {
     try { await api.painel.criarUsuario(novo); avisar(`Acesso criado para ${novo.nome}`); setNovo(null); carregar() } catch (e) { avisar((e as Error).message, 'erro') }
   }
   const remover = async (u: UsuarioLista) => {
-    if (!window.confirm(`Remover o acesso de ${u.nome} ao painel?`)) return
+    if (!(await confirmar(`Remover o acesso de ${u.nome} ao painel?`, { botao: 'Remover acesso' }))) return
     try { await api.painel.removerUsuario(u.id); avisar('Acesso removido'); carregar() } catch (e) { avisar((e as Error).message, 'erro') }
   }
 

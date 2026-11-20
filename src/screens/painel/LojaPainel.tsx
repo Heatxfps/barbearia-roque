@@ -10,14 +10,14 @@ import { dataCurta, foto, formatarTelefone, hora, lerImagem, linkWhats, moeda } 
 const ROTULO: Record<StatusPedido, string> = { novo: 'Novo', separado: 'Separado', retirado: 'Retirado', cancelado: 'Cancelado' }
 
 export default function LojaPainel({ usuario }: { usuario: UsuarioPainel }) {
-  const { avisar } = useApp()
+  const { avisar, confirmar } = useApp()
   const [todos, setTodos] = useState(false)
   const [pedidos, setPedidos] = useState<PedidoPainel[] | null>(null)
   const carregar = useCallback(() => { api.painel.pedidos(todos).then(setPedidos).catch((e) => avisar(e.message, 'erro')) }, [todos, avisar])
   useEffect(() => { carregar() }, [carregar])
 
   const mudar = async (o: PedidoPainel, s: StatusPedido) => {
-    if (s === 'cancelado' && !window.confirm(`Cancelar o pedido de ${o.cliente}?`)) return
+    if (s === 'cancelado' && !(await confirmar(`Cancelar o pedido de ${o.cliente}?`, { botao: 'Cancelar pedido' }))) return
     try { await api.painel.statusPedido(o.id, s); avisar(s === 'separado' ? `${o.cliente} foi avisado no WhatsApp` : `Pedido: ${ROTULO[s].toLowerCase()}`); carregar() } catch (e) { avisar((e as Error).message, 'erro') }
   }
 
@@ -60,6 +60,7 @@ export default function LojaPainel({ usuario }: { usuario: UsuarioPainel }) {
 }
 
 function Produtos({ avisar }: { avisar: (t: string, tipo?: 'ok' | 'erro') => void }) {
+  const { confirmar } = useApp()
   const [lista, setLista] = useState<Produto[] | null>(null)
   const [editando, setEditando] = useState<string | null>(null)
   const carregar = useCallback(() => { api.painel.produtosPainel().then(setLista).catch((e) => avisar(e.message, 'erro')) }, [avisar])
@@ -68,7 +69,7 @@ function Produtos({ avisar }: { avisar: (t: string, tipo?: 'ok' | 'erro') => voi
     try { await api.painel.salvarProduto(id, p); avisar('Produto salvo'); setEditando(null); carregar() } catch (e) { avisar((e as Error).message, 'erro') }
   }
   const remover = async (p: Produto) => {
-    if (!window.confirm(`Apagar ${p.nome}? Para só esconder (ex.: esgotado), desmarque "À venda".`)) return
+    if (!(await confirmar(`Apagar ${p.nome}? Para só esconder (ex.: esgotado), desmarque "À venda".`, { botao: 'Apagar' }))) return
     try { await api.painel.removerProduto(p.id); setEditando(null); carregar() } catch (e) { avisar((e as Error).message, 'erro') }
   }
   return (
