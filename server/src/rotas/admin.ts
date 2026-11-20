@@ -1,6 +1,8 @@
 /**
  * Painel da barbearia (dono e barbeiros).
- * Dono: vê e edita tudo. Barbeiro: vê e atualiza só a própria agenda.
+ * A agenda é conjunta: os barbeiros veem e mexem na agenda da casa toda
+ * (na Roque não há recepcionista, quem atende o cliente é o próprio barbeiro).
+ * Números de faturamento, clientes sumidos e ajustes ficam só com o dono.
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
@@ -13,10 +15,12 @@ import { clientesParaRetorno } from '../jobs.ts'
 
 type Admin = Extract<Sessao, { tipo: 'admin' }>
 const sessao = (req: FastifyRequest) => req.user as Admin
-/** barbeiro só enxerga o próprio profissional */
-const filtroProf = (req: FastifyRequest, pedido?: string) => {
+/** filtro de profissional pedido na tela ("todos" = sem filtro) */
+const filtroProf = (_req: FastifyRequest, pedido?: string) => (pedido && pedido !== 'todos' ? pedido : undefined)
+/** números do resumo: o barbeiro vê só os dele */
+const filtroResumo = (req: FastifyRequest) => {
   const s = sessao(req)
-  return s.papel === 'barbeiro' ? s.profissionalId ?? '__nenhum__' : pedido && pedido !== 'todos' ? pedido : undefined
+  return s.papel === 'barbeiro' ? s.profissionalId ?? '__nenhum__' : undefined
 }
 
 export async function rotasAdmin(app: FastifyInstance, db: DB) {
@@ -41,7 +45,7 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
     r.get('/resumo', async (req) => {
       const { data } = z.object({ data: z.string().refine(dataValida).optional() }).parse(req.query)
       const dia = data ?? dataIso(agora())
-      const prof = filtroProf(req)
+      const prof = filtroResumo(req)
       const pf = prof ? 'AND profissional_id = ?' : ''
       const args = (...a: unknown[]) => (prof ? [...a, prof] : a) as string[]
       const mes = dia.slice(0, 7)
@@ -97,8 +101,6 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       const { status } = z.object({ status: z.enum(['confirmado', 'concluido', 'faltou', 'cancelado']) }).parse(req.body)
       const a = db.prepare('SELECT profissional_id FROM agendamentos WHERE id = ?').get(id) as { profissional_id: string } | undefined
       if (!a) throw new ErroNegocio('Agendamento não encontrado', 404)
-      const s = sessao(req)
-      if (s.papel === 'barbeiro' && a.profissional_id !== s.profissionalId) throw new ErroNegocio('Acesso negado', 403)
       if (status === 'cancelado') cancelarAgendamento(db, id)
       else db.prepare('UPDATE agendamentos SET status = ? WHERE id = ?').run(status, id)
       return { ok: true }
@@ -111,8 +113,6 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
         servicoId: z.string(), profissionalId: z.string(),
         data: z.string().refine(dataValida), hora: z.string().refine(horaValida),
       }).parse(req.body)
-      const s = sessao(req)
-      if (s.papel === 'barbeiro' && b.profissionalId !== s.profissionalId) throw new ErroNegocio('Acesso negado', 403)
       const tel = b.telefone ? normalizarTelefone(b.telefone) : null
       if (b.telefone && !tel) throw new ErroNegocio('WhatsApp inválido')
       const telefoneFinal = tel ?? `balcao-${novoId()}`
@@ -127,11 +127,9 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
 
     r.get('/bloqueios', async (req) => {
       const q = z.object({ de: z.string().refine(dataValida).optional() }).parse(req.query)
-      const prof = filtroProf(req)
       const de = `${q.de ?? dataIso(agora())} 00:00`
       return db.prepare(`SELECT b.id, b.inicio, b.fim, b.motivo, b.profissional_id AS profissionalId, p.nome AS profissional
-                         FROM bloqueios b JOIN profissionais p ON p.id = b.profissional_id WHERE b.fim > ? ${prof ? 'AND b.profissional_id = ?' : ''} ORDER BY b.inicio LIMIT 100`)
-        .all(...(prof ? [de, prof] : [de]))
+                         FROM bloqueios b JOIN profissionais p ON p.id = b.profissional_id WHERE b.fim > ? ORDER BY b.inicio LIMIT 100`).all(de)
     })
 
     r.post('/bloqueios', async (req, reply) => {
@@ -139,8 +137,6 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
         profissionalId: z.string(), data: z.string().refine(dataValida),
         inicio: z.string().refine(horaValida), fim: z.string().refine(horaValida), motivo: z.string().max(80).default(''),
       }).parse(req.body)
-      const s = sessao(req)
-      if (s.papel === 'barbeiro' && b.profissionalId !== s.profissionalId) throw new ErroNegocio('Acesso negado', 403)
       if (b.fim <= b.inicio) throw new ErroNegocio('O fim precisa ser depois do início')
       const id = novoId()
       const ids = b.profissionalId === 'todos'
@@ -153,8 +149,7 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
 
     r.delete('/bloqueios/:id', async (req) => {
       const { id } = z.object({ id: z.string() }).parse(req.params)
-      const prof = filtroProf(req)
-      db.prepare(`DELETE FROM bloqueios WHERE id = ? ${prof ? 'AND profissional_id = ?' : ''}`).run(...(prof ? [id, prof] : [id]))
+      db.prepare('DELETE FROM bloqueios WHERE id = ?').run(id)
       return { ok: true }
     })
 
@@ -168,6 +163,15 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
                          FROM clientes c LEFT JOIN agendamentos a ON a.cliente_id = c.id
                          WHERE c.telefone NOT LIKE 'balcao-%' AND (c.nome LIKE ? OR c.telefone LIKE ?)
                          GROUP BY c.id ORDER BY ultimaVisita DESC NULLS LAST LIMIT 100`).all(like, like)
+    })
+
+    /** cada um troca a própria senha (mínimo 8 caracteres) */
+    r.put('/senha', async (req) => {
+      const b = z.object({ atual: z.string(), nova: z.string().min(8, 'A nova senha precisa ter pelo menos 8 caracteres') }).parse(req.body)
+      const u = db.prepare('SELECT senha_hash FROM usuarios WHERE id = ?').get(sessao(req).id) as { senha_hash: string }
+      if (!conferirSenha(b.atual, u.senha_hash)) throw new ErroNegocio('Senha atual incorreta')
+      db.prepare('UPDATE usuarios SET senha_hash = ? WHERE id = ?').run(hashSenha(b.nova), sessao(req).id)
+      return { ok: true }
     })
 
     r.get('/mensagens', async () => db.prepare('SELECT id, telefone, tipo, texto, status, erro, criado_em AS criadoEm FROM mensagens ORDER BY criado_em DESC, rowid DESC LIMIT 60').all())
@@ -235,13 +239,24 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       d.put('/barbearia', async (req) => {
         const b = z.object({
           nome: z.string().min(2), cidade: z.string(), endereco: z.string(),
-          whatsapp: z.string(), instagram: z.string(),
+          whatsapp: z.string().transform((t) => t.replace(/\D/g, '')).refine((t) => t.length >= 12 && t.length <= 13, 'WhatsApp com DDI e DDD, ex.: 5527999999999'),
+          instagram: z.string().transform((t) => t.replace(/^@/, '').trim()), dono: z.string(),
         }).partial().parse(req.body)
         for (const [k, v] of Object.entries(b)) db.prepare('INSERT INTO barbearia (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor').run(k, String(v))
         return lerBarbearia(db)
       })
 
-      /** cria acesso ao painel para um barbeiro (vê só a própria agenda) */
+      d.get('/usuarios', async () =>
+        db.prepare(`SELECT u.id, u.nome, u.email, u.papel, u.profissional_id AS profissionalId FROM usuarios u ORDER BY u.papel DESC, u.nome`).all())
+
+      d.delete('/usuarios/:id', async (req) => {
+        const { id } = z.object({ id: z.string() }).parse(req.params)
+        if (id === sessao(req).id) throw new ErroNegocio('Você não pode remover o próprio acesso')
+        db.prepare("DELETE FROM usuarios WHERE id = ? AND papel = 'barbeiro'").run(id)
+        return { ok: true }
+      })
+
+      /** cria acesso ao painel para um barbeiro (agenda conjunta, sem faturamento nem ajustes) */
       d.post('/usuarios', async (req, reply) => {
         const b = z.object({ nome: z.string().min(2), email: z.string().email(), senha: z.string().min(6), profissionalId: z.string() }).parse(req.body)
         try {
@@ -251,13 +266,6 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
         return reply.status(201).send({ ok: true })
       })
 
-      d.put('/senha', async (req) => {
-        const b = z.object({ atual: z.string(), nova: z.string().min(8) }).parse(req.body)
-        const u = db.prepare('SELECT senha_hash FROM usuarios WHERE id = ?').get(sessao(req).id) as { senha_hash: string }
-        if (!conferirSenha(b.atual, u.senha_hash)) throw new ErroNegocio('Senha atual incorreta')
-        db.prepare('UPDATE usuarios SET senha_hash = ? WHERE id = ?').run(hashSenha(b.nova), sessao(req).id)
-        return { ok: true }
-      })
     })
   })
 

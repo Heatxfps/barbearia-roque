@@ -3,7 +3,7 @@
  * Imita a API guardando tudo no próprio celular, com dados de demonstração.
  * As regras são as mesmas do servidor (duração, intervalo, conflitos), em versão simplificada.
  */
-import type { Agendamento, Api, Barbearia, Bloqueio, Cliente, ItemAgenda, Mensagem, Servico, Status } from './tipos'
+import type { Agendamento, Api, Barbearia, Bloqueio, Cliente, DadosBarbearia, ItemAgenda, Mensagem, Servico, Status, UsuarioLista } from './tipos'
 
 const p2 = (n: number) => String(n).padStart(2, '0')
 const dataIso = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
@@ -42,6 +42,8 @@ type Banco = {
   bloqueios: Omit<Bloqueio, 'profissional'>[]
   mensagens: Mensagem[]
   codigo?: { telefone: string; codigo: string }
+  info?: Partial<DadosBarbearia>
+  usuarios?: UsuarioLista[]
   sessao?: string
   painel?: boolean
 }
@@ -102,6 +104,12 @@ function horariosDo(prof: string, data: string, duracao: number, agoraD = new Da
 const livres = (prof: string, data: string, dur: number) =>
   [...new Set((prof === 'qualquer' ? PROFS.map((p) => p.id) : [prof]).flatMap((p) => horariosDo(p, data, dur)))].sort()
 
+const OFFLINE = 'Na demonstração offline isso fica travado. Funciona na versão com servidor.'
+const dados = (): DadosBarbearia => ({
+  nome: 'Barbearia Roque', cidade: 'Nova Venécia - ES', endereco: 'Endereço a confirmar · Nova Venécia - ES',
+  whatsapp: '5527999999999', instagram: 'barbearia_roque', dono: 'Luciano Roque', ...banco.info,
+})
+const DONO: UsuarioLista = { id: 'dono', nome: 'Luciano Roque', email: 'dono@roque.local', papel: 'dono', profissionalId: null }
 const servico = (sid: string) => banco.servicos.find((s) => s.id === sid)!
 const nomeProf = (pid: string) => PROFS.find((p) => p.id === pid)?.nome ?? ''
 const cliente = (cid: string) => banco.clientes.find((c) => c.id === cid)
@@ -122,9 +130,9 @@ export const apiLocal: Api = {
     await espera()
     const horarios: Barbearia['horarios'] = {}
     for (let d = 0; d < 7; d++) { const e = EXPEDIENTE[d]; horarios[d] = e ? [e[0], e[1]] : null }
+    const { dono, ...info } = dados()
     return {
-      nome: 'Barbearia Roque', cidade: 'Nova Venécia - ES', endereco: 'Endereço a confirmar · Nova Venécia - ES',
-      whatsapp: '5527999999999', instagram: 'barbearia_roque', dono: { nome: 'Luciano Roque', foto: 'luciano-roque' }, horarios, fidelidadeMeta: META, diasAgenda: 14,
+      ...info, dono: { nome: dono, foto: 'luciano-roque' }, horarios, fidelidadeMeta: META, diasAgenda: 14,
       antecedenciaCancelarMin: 120, whatsappModo: 'offline', servicos: banco.servicos.filter((s) => s.ativo !== false), profissionais: PROFS,
     }
   },
@@ -181,6 +189,10 @@ export const apiLocal: Api = {
     banco.agendamentos.push(a)
     const c = cliente(a.clienteId)!
     msg(c.telefone, 'confirmacao', `Fala, ${c.nome.split(' ')[0]}! ✂️ Seu horário de *${sv.nome}* está confirmado para ${inicio.slice(8, 10)}/${inicio.slice(5, 7)} às ${d.hora}.`)
+    msg(dados().whatsapp, 'aviso_novo', `📲 *Novo horário pelo app*
+${c.nome} · ${sv.nome}
+👤 ${nomeProf(prof)}
+📅 ${inicio.slice(8, 10)}/${inicio.slice(5, 7)} às ${d.hora}`)
     salvar()
     return { id: a.id, profissionalId: prof, inicio }
   },
@@ -270,5 +282,19 @@ export const apiLocal: Api = {
       else banco.servicos.push({ ...s, id: id() })
       salvar()
     },
+    async salvarBarbearia(d) { banco.info = { ...banco.info, ...d }; salvar() },
+    async profissionais() {
+      const exp = Object.entries(EXPEDIENTE).filter(([, e]) => e).map(([dia, e]) => ({ dia: Number(dia), inicio: e![0], fim: e![1], intervaloInicio: e![2] ?? null, intervaloFim: e![3] ?? null }))
+      return PROFS.map((p) => ({ ...p, ativo: true, expediente: exp }))
+    },
+    async salvarProfissional() { throw new Error(OFFLINE) },
+    async usuarios() { return [DONO, ...(banco.usuarios ?? [])] },
+    async criarUsuario(d) {
+      if ([DONO, ...(banco.usuarios ?? [])].some((u) => u.email === d.email.toLowerCase())) throw new Error('Esse e-mail já tem acesso')
+      banco.usuarios = [...(banco.usuarios ?? []), { id: id(), nome: d.nome, email: d.email.toLowerCase(), papel: 'barbeiro', profissionalId: d.profissionalId }]
+      salvar()
+    },
+    async removerUsuario(uid) { banco.usuarios = (banco.usuarios ?? []).filter((u) => u.id !== uid); salvar() },
+    async trocarSenha() { throw new Error(OFFLINE) },
   },
 }

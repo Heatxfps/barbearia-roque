@@ -157,11 +157,30 @@ test('dono altera preço e o app já mostra o novo valor', async () => {
   assert.equal(s.preco, 50)
 })
 
-test('barbeiro só vê a própria agenda e não edita preços', async () => {
+test('agenda conjunta: barbeiro vê a casa toda, mas não vê faturamento nem ajustes', async () => {
   const dono = await loginDono()
   assert.equal((await req('POST', '/api/admin/usuarios', { nome: 'Barbeiro 1', email: 'b1@roque.local', senha: 'segredo1', profissionalId: 'p1' }, dono)).status, 201)
   const b1 = (await req('POST', '/api/admin/login', { email: 'b1@roque.local', senha: 'segredo1' })).json.token
   const agenda = (await req('GET', `/api/admin/agenda?data=${TER}`, undefined, b1)).json
-  assert.ok(agenda.agendamentos.every((a: { profissionalId: string }) => a.profissionalId === 'p1'))
+  const profs = new Set(agenda.agendamentos.map((a: { profissionalId: string }) => a.profissionalId))
+  assert.ok(profs.has('p1') && profs.has('p2'))
+  // encaixe na agenda do outro barbeiro
+  const enc = await req('POST', '/api/admin/agendamentos', { nome: 'Cliente Balcão', servicoId: 'barba', profissionalId: 'p2', data: TER, hora: '16:00' }, b1)
+  assert.equal(enc.status, 201)
   assert.equal((await req('PUT', '/api/admin/servicos/corte', { nome: 'Corte', preco: 1, duracao: 40 }, b1)).status, 403)
+  assert.equal((await req('GET', '/api/admin/usuarios', undefined, b1)).status, 403)
+  const resumo = (await req('GET', `/api/admin/resumo?data=${TER}`, undefined, b1)).json
+  assert.deepEqual(resumo.retorno, [])
+  const usuarios = (await req('GET', '/api/admin/usuarios', undefined, dono)).json as { email: string }[]
+  assert.ok(usuarios.some((u) => u.email === 'b1@roque.local'))
+})
+
+test('agendamento pelo app avisa o WhatsApp da barbearia', async () => {
+  const dono = await loginDono()
+  assert.equal((await req('PUT', '/api/admin/barbearia', { whatsapp: '+55 (27) 98888-7777' }, dono)).status, 200)
+  const t = await loginCliente('27995556666', 'Carlos Teste')
+  assert.equal((await req('POST', '/api/me/agendamentos', { servicoId: 'corte', profissionalId: 'p2', data: TER, hora: '17:00' }, t)).status, 201)
+  const msgs = (await req('GET', '/api/admin/mensagens', undefined, dono)).json as { tipo: string; telefone: string; texto: string }[]
+  const aviso = msgs.find((m) => m.tipo === 'aviso_novo')
+  assert.ok(aviso && aviso.telefone === '5527988887777' && aviso.texto.includes('Carlos Teste'))
 })

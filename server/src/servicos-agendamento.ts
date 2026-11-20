@@ -44,7 +44,10 @@ export function criarAgendamento(db: DB, dados: {
       .run(id, dados.clienteId, prof, servico.id, inicio, fimDoServico(dados.data, dados.hora, servico.duracao), servico.preco, dados.origem, carimbo(agora()))
     return { id, profissionalId: prof, inicio }
   })
-  if (dados.origem === 'app') void notificar(db, id, 'confirmacao')
+  if (dados.origem === 'app') {
+    void notificar(db, id, 'confirmacao')
+    void avisarBarbearia(db, id, 'novo')
+  }
   return r
 }
 
@@ -62,6 +65,7 @@ export function cancelarAgendamento(db: DB, id: string, porCliente?: string) {
   }
   db.prepare("UPDATE agendamentos SET status = 'cancelado' WHERE id = ?").run(id)
   void notificar(db, id, 'cancelamento')
+  if (porCliente) void avisarBarbearia(db, id, 'cancelou')
 }
 
 type Detalhe = { telefone: string; nome: string; servico: string; profissional: string; inicio: string }
@@ -83,6 +87,18 @@ export async function notificar(db: DB, id: string, tipo: 'confirmacao' | 'cance
     : tipo === 'lembrete_24h' ? textos.lembrete24h(info)
     : textos.lembrete1h(info)
   await enviarWhatsApp(db, d.telefone, tipo, texto)
+}
+
+/** Avisa o WhatsApp da própria barbearia quando o cliente marca ou cancela pelo app,
+ *  para quem está no balcão saber na hora (desligue com AVISAR_BARBEARIA=0). */
+export async function avisarBarbearia(db: DB, id: string, tipo: 'novo' | 'cancelou') {
+  if (!config.avisarBarbearia) return
+  const d = detalhe(db, id)
+  const b = lerBarbearia(db)
+  const destino = (b.whatsapp ?? '').replace(/\D/g, '')
+  if (!d || destino.length < 12) return
+  const info = { ...d, barbearia: b.nome }
+  await enviarWhatsApp(db, destino, tipo === 'novo' ? 'aviso_novo' : 'aviso_cancelou', tipo === 'novo' ? textos.avisoNovo(info) : textos.avisoCancelou(info))
 }
 
 /** Selos do cartão fidelidade = atendimentos concluídos (o ciclo recomeça a cada meta). */

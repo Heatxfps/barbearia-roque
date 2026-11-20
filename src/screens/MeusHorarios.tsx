@@ -5,6 +5,7 @@ import Entrar from '../components/Entrar'
 import { api, type Agendamento } from '../api'
 import { useApp } from '../contexto'
 import { dataLonga, hora, moeda } from '../util'
+import { Ornamento } from './Inicio'
 
 const ROTULO: Record<string, string> = { concluido: 'Realizado', cancelado: 'Cancelado', faltou: 'Não compareceu', confirmado: 'Confirmado' }
 
@@ -69,7 +70,7 @@ export default function MeusHorarios({ navegar }: { navegar: Navegar }) {
         <p className="suave pequeno">Cancelamentos pelo app até {barbearia.antecedenciaCancelarMin / 60}h antes do horário.</p>
       )}
 
-      {passados.length > 0 && <h2 className="secao">Histórico</h2>}
+      {passados.length > 0 && <Ornamento texto="Histórico" />}
       <div className="lista">
         {passados.map((a) => (
           <div key={a.id} className="item item--estatico">

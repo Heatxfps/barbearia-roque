@@ -15,3 +15,6 @@ server/.env
 
 # fotos originais em alta resolução (o app usa os recortes de public/img/equipe)
 originais/equipe/
+
+# backups do banco gerados na VPS
+backups/

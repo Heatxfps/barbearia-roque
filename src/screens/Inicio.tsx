@@ -93,7 +93,7 @@ export default function Inicio({ navegar }: { navegar: Navegar }) {
         <button className="link" onClick={() => navegar('agendar')}>Ver todos os serviços</button>
       </div>
 
-      <button className="noivo-chamada" onClick={() => navegar('noivo')} style={{ backgroundImage: `url(${B}img/fundo-parede.jpg)` }}>
+      <button className="noivo-chamada" onClick={() => navegar('noivo')} style={{ backgroundImage: `url(${B}img/dia-do-noivo.jpg)` }}>
         <div className="noivo-chamada__sombra" />
         <div className="noivo-chamada__texto">
           <p className="sobretitulo">Experiência exclusiva</p>

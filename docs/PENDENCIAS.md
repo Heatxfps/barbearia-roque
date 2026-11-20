@@ -6,9 +6,10 @@ Os dados de exemplo ficam no servidor: valores iniciais em [`server/src/db.ts`](
 
 - [x] Nome do dono: **Luciano Roque** (foto em `originais/equipe/`)
 - [ ] Endereço completo e link do Google Maps
-- [ ] WhatsApp oficial da barbearia
+- [ ] WhatsApp oficial da barbearia (recebe o aviso de cada horário marcado pelo app)
+- [ ] Usam WhatsApp Business? (para a mensagem de saudação com o link do app)
 - [x] Instagram oficial: [@barbearia_roque](https://www.instagram.com/barbearia_roque/)
-- [ ] Horário de funcionamento por dia (incluindo almoço/intervalo)
+- [ ] Horário de funcionamento por dia, incluindo almoço (já dá para lançar em Ajustes → Equipe e horários)
 - [ ] Ano de fundação / história curta (para a tela "A Roque")
 
 ## Serviços e preços
@@ -25,7 +26,7 @@ Os dados de exemplo ficam no servidor: valores iniciais em [`server/src/db.ts`](
 - [ ] Dias de folga de cada um
 - [ ] Texto sobre o Luciano e a história da casa (o da tela "A Roque" é provisório)
 - [ ] Trabalham por comissão? (afeta o painel do dono)
-- [ ] Cada barbeiro vai ter acesso próprio ao painel? (e-mail de cada um)
+- [ ] E-mail de cada barbeiro para criar o acesso ao painel (Ajustes → Acessos)
 
 ## Dia do Noivo
 

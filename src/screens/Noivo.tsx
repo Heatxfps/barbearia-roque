@@ -22,7 +22,7 @@ export default function Noivo({ navegar }: { navegar: Navegar }) {
 
   return (
     <div className="tela">
-      <header className="noivo-hero" style={{ backgroundImage: `url(${B}img/fundo-parede.jpg)` }}>
+      <header className="noivo-hero" style={{ backgroundImage: `url(${B}img/dia-do-noivo.jpg)` }}>
         <div className="noivo-hero__sombra" />
         <button className="icone-botao noivo-hero__voltar" onClick={() => navegar('inicio')} aria-label="Voltar"><Icone nome="voltar" /></button>
         <div className="noivo-hero__texto">

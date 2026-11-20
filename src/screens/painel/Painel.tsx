@@ -4,11 +4,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Navegar } from '../../App'
 import Icone from '../../components/Icone'
-import { api, type Bloqueio, type ClientePainel, type ItemAgenda, type Mensagem, type Resumo, type Servico, type Status, type UsuarioPainel } from '../../api'
+import { api, type Bloqueio, type ClientePainel, type ItemAgenda, type Mensagem, type Profissional, type Resumo, type Status, type UsuarioPainel } from '../../api'
 import { useApp } from '../../contexto'
-import { dataCurta, dataIso, dataLonga, formatarTelefone, hora, lerData, linkWhats, moeda } from '../../util'
+import { dataCurta, dataIso, dataLonga, foto, formatarTelefone, hora, lerData, linkWhats, moeda, primeiroNome } from '../../util'
+import Ajustes from './Ajustes'
+import Divulgacao from './Divulgacao'
 
-type Aba = 'hoje' | 'clientes' | 'whatsapp' | 'ajustes'
+type Aba = 'hoje' | 'clientes' | 'whatsapp' | 'divulgacao' | 'ajustes'
 
 export default function Painel({ navegar }: { navegar: Navegar }) {
   const { avisar } = useApp()
@@ -27,7 +29,7 @@ export default function Painel({ navegar }: { navegar: Navegar }) {
   if (!usuario) return <Login aoEntrar={setUsuario} voltar={() => navegar('perfil')} />
 
   const dono = usuario.papel === 'dono'
-  const abas: [Aba, string][] = [['hoje', 'Agenda'], ['clientes', 'Clientes'], ['whatsapp', 'WhatsApp'], ...(dono ? [['ajustes', 'Ajustes'] as [Aba, string]] : [])]
+  const abas: [Aba, string][] = [['hoje', 'Agenda'], ['clientes', 'Clientes'], ['whatsapp', 'WhatsApp'], ['divulgacao', 'Divulgação'], ['ajustes', 'Ajustes']]
 
   return (
     <div className="painel">
@@ -35,7 +37,7 @@ export default function Painel({ navegar }: { navegar: Navegar }) {
         <button className="icone-botao" onClick={() => navegar('perfil')} aria-label="Voltar ao app"><Icone nome="voltar" /></button>
         <div className="painel__marca">
           <img src={`${import.meta.env.BASE_URL}logo-partes/logo-completa.png`} alt="" />
-          <div><strong>Painel da Roque</strong><span className="suave pequeno">{usuario.nome} · {dono ? 'dono' : 'barbeiro'}</span></div>
+          <div><strong className="painel__titulo">Painel da Roque</strong><span className="suave pequeno">{usuario.nome} · {dono ? 'dono' : 'barbeiro'}</span></div>
         </div>
         <button className="link" onClick={sair}>Sair</button>
       </header>
@@ -48,7 +50,8 @@ export default function Painel({ navegar }: { navegar: Navegar }) {
       {aba === 'hoje' && <AbaAgenda usuario={usuario} avisar={avisar} />}
       {aba === 'clientes' && <AbaClientes />}
       {aba === 'whatsapp' && <AbaWhatsApp />}
-      {aba === 'ajustes' && dono && <AbaAjustes avisar={avisar} />}
+      {aba === 'divulgacao' && <Divulgacao />}
+      {aba === 'ajustes' && <Ajustes usuario={usuario} />}
     </div>
   )
 }
@@ -101,6 +104,7 @@ function AbaAgenda({ usuario, avisar }: { usuario: UsuarioPainel; avisar: (t: st
     try { await api.painel.status(a.id, s); avisar(`${a.cliente}: ${ROTULO[s].toLowerCase()}`); carregar() } catch (e) { avisar((e as Error).message, 'erro') }
   }
 
+  const liberar = async (b: Bloqueio) => { try { await api.painel.desbloquear(b.id); carregar() } catch (e) { avisar((e as Error).message, 'erro') } }
   const ativos = agenda?.agendamentos.filter((a) => a.status !== 'cancelado') ?? []
   const cancelados = agenda?.agendamentos.filter((a) => a.status === 'cancelado') ?? []
   const ehHoje = data === dataIso(new Date())
@@ -121,17 +125,21 @@ function AbaAgenda({ usuario, avisar }: { usuario: UsuarioPainel; avisar: (t: st
           <div className="metricas">
             <div className="metrica"><span className="suave">Atendimentos</span><strong>{resumo.hoje.atendimentos}</strong></div>
             <div className="metrica"><span className="suave">Previsto no dia</span><strong>{moeda(resumo.hoje.previsto)}</strong></div>
-            <div className="metrica"><span className="suave">Faturado no mês</span><strong>{moeda(resumo.mes.faturado)}</strong></div>
+            <div className="metrica"><span className="suave">{usuario.papel === 'dono' ? 'Faturado no mês' : 'Seu faturamento no mês'}</span><strong>{moeda(resumo.mes.faturado)}</strong></div>
             <div className="metrica"><span className="suave">Faltas no mês</span><strong>{resumo.mes.faltas} <small className="suave">({pct(resumo.mes.taxaFalta)})</small></strong></div>
             <div className="metrica"><span className="suave">Marcados pelo app</span><strong>{pct(resumo.mes.percentualApp)}</strong></div>
             <div className="metrica"><span className="suave">Concluídos no mês</span><strong>{resumo.mes.concluidos}</strong></div>
           </div>
         )}
 
-        {usuario.papel === 'dono' && barbearia && (
+        {barbearia && barbearia.profissionais.length > 1 && (
           <div className="filtros">
-            <button className={filtro === 'todos' ? 'ativo' : ''} onClick={() => setFiltro('todos')}>Todos</button>
-            {barbearia.profissionais.map((p) => <button key={p.id} className={filtro === p.id ? 'ativo' : ''} onClick={() => setFiltro(p.id)}>{p.nome}</button>)}
+            <button className={filtro === 'todos' ? 'ativo' : ''} onClick={() => setFiltro('todos')}>Agenda da casa</button>
+            {barbearia.profissionais.map((p) => (
+              <button key={p.id} className={`filtro-foto ${filtro === p.id ? 'ativo' : ''}`} onClick={() => setFiltro(p.id)}>
+                {p.foto && <img src={foto(p.foto, 'avatar')} alt="" />}{primeiroNome(p.nome)}
+              </button>
+            ))}
           </div>
         )}
 
@@ -142,48 +150,21 @@ function AbaAgenda({ usuario, avisar }: { usuario: UsuarioPainel; avisar: (t: st
         {form === 'encaixe' && <FormEncaixe data={data} usuario={usuario} aoSalvar={() => { setForm(null); carregar() }} />}
         {form === 'bloqueio' && <FormBloqueio data={data} usuario={usuario} aoSalvar={() => { setForm(null); carregar() }} />}
 
-        <div className="linha-tempo">
-          {!agenda && <div className="cartao cartao--esqueleto" />}
-          {agenda && !ativos.length && !agenda.bloqueios.length && <p className="vazio">Nenhum horário marcado neste dia.</p>}
-          {[...ativos.map((a) => ({ t: a.inicio, a })), ...(agenda?.bloqueios ?? []).map((b) => ({ t: b.inicio, b }))]
-            .sort((x, y) => x.t.localeCompare(y.t))
-            .map((x) => 'a' in x ? (
-              <div key={x.a.id} className={`evento evento--${x.a.status}`}>
-                <span className="evento__hora">{hora(x.a.inicio)}<small>{hora(x.a.fim)}</small></span>
-                <div className="evento__corpo">
-                  <strong>{x.a.cliente} {x.a.visitas === 0 && <span className="badge">1ª vez</span>}</strong>
-                  <span className="suave">{x.a.servico} · {x.a.profissional} · {moeda(x.a.preco)} {x.a.origem === 'balcao' ? '· balcão' : ''}</span>
-                  <div className="evento__acoes">
-                    {x.a.status === 'confirmado' ? (
-                      <>
-                        <button className="chip chip--ok" onClick={() => marcar(x.a, 'concluido')}>✓ Concluído</button>
-                        <button className="chip" onClick={() => marcar(x.a, 'faltou')}>Faltou</button>
-                        <button className="chip" onClick={() => marcar(x.a, 'cancelado')}>Cancelar</button>
-                      </>
-                    ) : (
-                      <>
-                        <span className={`badge ${x.a.status === 'concluido' ? '' : 'badge--off'}`}>{ROTULO[x.a.status]}</span>
-                        <button className="chip" onClick={() => marcar(x.a, 'confirmado')}>Desfazer</button>
-                      </>
-                    )}
-                    {!x.a.telefone.startsWith('balcao') && <a className="chip" href={linkWhats(x.a.telefone)} target="_blank" rel="noreferrer">WhatsApp</a>}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div key={x.b.id} className="evento evento--bloqueio">
-                <span className="evento__hora">{hora(x.b.inicio)}<small>{hora(x.b.fim)}</small></span>
-                <div className="evento__corpo">
-                  <strong>Bloqueado {x.b.motivo && `· ${x.b.motivo}`}</strong>
-                  <span className="suave">{x.b.profissional}</span>
-                  <div className="evento__acoes">
-                    <button className="chip" onClick={async () => { await api.painel.desbloquear(x.b.id); carregar() }}>Liberar</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          {cancelados.length > 0 && <p className="suave pequeno">{cancelados.length} cancelado(s) neste dia</p>}
-        </div>
+        {!agenda && <div className="cartao cartao--esqueleto" />}
+        {agenda && !ativos.length && !agenda.bloqueios.length && <p className="vazio">Nenhum horário marcado neste dia.</p>}
+        {agenda && (ativos.length > 0 || agenda.bloqueios.length > 0) && (
+          filtro === 'todos' && barbearia && barbearia.profissionais.length > 1 ? (
+            <div className="agenda-colunas">
+              {barbearia.profissionais.map((p) => (
+                <Coluna key={p.id} prof={p}
+                  itens={ativos.filter((a) => a.profissionalId === p.id)}
+                  bloqueios={agenda.bloqueios.filter((b) => b.profissionalId === p.id)}
+                  marcar={marcar} liberar={liberar} />
+              ))}
+            </div>
+          ) : <LinhaTempo itens={ativos} bloqueios={agenda.bloqueios} marcar={marcar} liberar={liberar} mostrarProf />
+        )}
+        {cancelados.length > 0 && <p className="suave pequeno">{cancelados.length} cancelado(s) neste dia</p>}
       </section>
 
       {resumo && usuario.papel === 'dono' && (
@@ -251,8 +232,8 @@ function FormEncaixe({ data, usuario, aoSalvar }: { data: string; usuario: Usuar
         <label className="campo"><span>Serviço</span>
           <select value={f.servicoId} onChange={(e) => setF({ ...f, servicoId: e.target.value, hora: '' })}>{barbearia?.servicos.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}</select>
         </label>
-        <label className="campo"><span>Profissional</span>
-          <select value={f.profissionalId} disabled={usuario.papel === 'barbeiro'} onChange={(e) => setF({ ...f, profissionalId: e.target.value, hora: '' })}>{barbearia?.profissionais.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>
+        <label className="campo"><span>Barbeiro</span>
+          <select value={f.profissionalId} onChange={(e) => setF({ ...f, profissionalId: e.target.value, hora: '' })}>{barbearia?.profissionais.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>
         </label>
       </div>
       <div className="horas">{horas.map((h) => <button key={h} className={`hora ${f.hora === h ? 'hora--sel' : ''}`} onClick={() => setF({ ...f, hora: h })}>{h}</button>)}</div>
@@ -271,8 +252,8 @@ function FormBloqueio({ data, usuario, aoSalvar }: { data: string; usuario: Usua
   return (
     <section className="cartao form">
       <h3>Bloquear horário · {dataCurta(data)}</h3>
-      <label className="campo"><span>Profissional</span>
-        <select value={f.profissionalId} disabled={usuario.papel === 'barbeiro'} onChange={(e) => setF({ ...f, profissionalId: e.target.value })}>
+      <label className="campo"><span>Barbeiro</span>
+        <select value={f.profissionalId} onChange={(e) => setF({ ...f, profissionalId: e.target.value })}>
           <option value="todos">Todos (barbearia fechada)</option>
           {barbearia?.profissionais.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
         </select>
@@ -343,54 +324,62 @@ function AbaWhatsApp() {
   )
 }
 
-function AbaAjustes({ avisar }: { avisar: (t: string, tipo?: 'ok' | 'erro') => void }) {
-  const { recarregar } = useApp()
-  const [servicos, setServicos] = useState<Servico[] | null>(null)
-  const [editando, setEditando] = useState<string | null>(null)
-  const carregar = useCallback(() => { api.painel.servicos().then(setServicos).catch((e) => avisar(e.message, 'erro')) }, [avisar])
-  useEffect(() => { carregar() }, [carregar])
+type Marcar = (a: ItemAgenda, s: Status) => void
 
-  const salvar = async (id: string | null, s: Omit<Servico, 'id'>) => {
-    try { await api.painel.salvarServico(id, s); avisar('Serviço salvo. O app já mostra o novo valor.'); setEditando(null); carregar(); recarregar() } catch (e) { avisar((e as Error).message, 'erro') }
-  }
-
+/** Uma coluna por barbeiro: a agenda conjunta da casa, lado a lado */
+function Coluna({ prof, itens, bloqueios, marcar, liberar }: { prof: Profissional; itens: ItemAgenda[]; bloqueios: Bloqueio[]; marcar: Marcar; liberar: (b: Bloqueio) => void }) {
+  const total = itens.filter((a) => a.status !== 'faltou').reduce((t, a) => t + a.preco, 0)
   return (
-    <div className="painel__col">
-      <h2 className="secao">Serviços e preços</h2>
-      <div className="lista">
-        {servicos?.map((s) => editando === s.id
-          ? <EditarServico key={s.id} inicial={s} aoSalvar={(v) => salvar(s.id, v)} cancelar={() => setEditando(null)} />
-          : (
-            <button key={s.id} className={`item ${s.ativo === false ? 'item--inativo' : ''}`} onClick={() => setEditando(s.id)}>
-              <div><strong>{s.nome} {s.ativo === false && <span className="badge badge--off">oculto</span>}</strong><span className="suave">{s.duracao} min{s.destaque ? ' · destaque' : ''}</span></div>
-              <div className="item__preco"><strong>{moeda(s.preco)}</strong><span className="suave">editar</span></div>
-            </button>
-          ))}
-        {editando === 'novo'
-          ? <EditarServico inicial={{ nome: '', descricao: '', preco: 0, duracao: 30, destaque: false, ativo: true }} aoSalvar={(v) => salvar(null, v)} cancelar={() => setEditando(null)} />
-          : <button className="botao botao--fantasma" onClick={() => setEditando('novo')}><Icone nome="mais" tam={18} /> Novo serviço</button>}
-      </div>
-      <p className="suave pequeno">Profissionais, horários de expediente e acessos dos barbeiros também podem ser configurados pela API (veja a documentação).</p>
+    <div className="coluna">
+      <header className="coluna__topo">
+        {prof.foto ? <img src={foto(prof.foto, 'avatar')} alt="" /> : <div className="avatar avatar--p">{prof.nome[0]}</div>}
+        <div><strong>{prof.nome}</strong><span className="suave pequeno">{itens.length} {itens.length === 1 ? 'horário' : 'horários'} · {moeda(total)}</span></div>
+      </header>
+      {itens.length || bloqueios.length
+        ? <LinhaTempo itens={itens} bloqueios={bloqueios} marcar={marcar} liberar={liberar} />
+        : <p className="vazio pequeno">Agenda livre</p>}
     </div>
   )
 }
 
-function EditarServico({ inicial, aoSalvar, cancelar }: { inicial: Omit<Servico, 'id'>; aoSalvar: (s: Omit<Servico, 'id'>) => void; cancelar: () => void }) {
-  const [s, setS] = useState(inicial)
+function LinhaTempo({ itens, bloqueios, marcar, liberar, mostrarProf }: { itens: ItemAgenda[]; bloqueios: Bloqueio[]; marcar: Marcar; liberar: (b: Bloqueio) => void; mostrarProf?: boolean }) {
   return (
-    <div className="cartao form">
-      <label className="campo"><span>Nome</span><input value={s.nome} onChange={(e) => setS({ ...s, nome: e.target.value })} /></label>
-      <label className="campo"><span>Descrição</span><input value={s.descricao} onChange={(e) => setS({ ...s, descricao: e.target.value })} /></label>
-      <div className="campos-2">
-        <label className="campo"><span>Preço (R$)</span><input type="number" inputMode="decimal" min={0} step={1} value={s.preco} onChange={(e) => setS({ ...s, preco: Number(e.target.value) })} /></label>
-        <label className="campo"><span>Duração (min)</span><input type="number" inputMode="numeric" min={5} step={5} value={s.duracao} onChange={(e) => setS({ ...s, duracao: Number(e.target.value) })} /></label>
-      </div>
-      <label className="check"><input type="checkbox" checked={s.destaque} onChange={(e) => setS({ ...s, destaque: e.target.checked })} /> Destaque na tela inicial</label>
-      <label className="check"><input type="checkbox" checked={s.ativo !== false} onChange={(e) => setS({ ...s, ativo: e.target.checked })} /> Visível no app</label>
-      <div className="acoes">
-        <button className="botao botao--principal pequeno" disabled={s.nome.trim().length < 2 || s.duracao < 5} onClick={() => aoSalvar(s)}>Salvar</button>
-        <button className="botao botao--fantasma pequeno" onClick={cancelar}>Cancelar</button>
-      </div>
+    <div className="linha-tempo">
+      {[...itens.map((a) => ({ t: a.inicio, a })), ...bloqueios.map((b) => ({ t: b.inicio, b }))]
+        .sort((x, y) => x.t.localeCompare(y.t))
+        .map((x) => 'a' in x ? (
+          <div key={x.a.id} className={`evento evento--${x.a.status}`}>
+            <span className="evento__hora">{hora(x.a.inicio)}<small>{hora(x.a.fim)}</small></span>
+            <div className="evento__corpo">
+              <strong>{x.a.cliente} {x.a.visitas === 0 && <span className="badge">1ª vez</span>}</strong>
+              <span className="suave">{x.a.servico}{mostrarProf ? ` · ${primeiroNome(x.a.profissional)}` : ''} · {moeda(x.a.preco)} · {x.a.origem === 'balcao' ? 'balcão' : 'app'}</span>
+              <div className="evento__acoes">
+                {x.a.status === 'confirmado' ? (
+                  <>
+                    <button className="chip chip--ok" onClick={() => marcar(x.a, 'concluido')}>✓ Concluído</button>
+                    <button className="chip" onClick={() => marcar(x.a, 'faltou')}>Faltou</button>
+                    <button className="chip" onClick={() => marcar(x.a, 'cancelado')}>Cancelar</button>
+                  </>
+                ) : (
+                  <>
+                    <span className={`badge ${x.a.status === 'concluido' ? '' : 'badge--off'}`}>{ROTULO[x.a.status]}</span>
+                    <button className="chip" onClick={() => marcar(x.a, 'confirmado')}>Desfazer</button>
+                  </>
+                )}
+                {!x.a.telefone.startsWith('balcao') && <a className="chip" href={linkWhats(x.a.telefone)} target="_blank" rel="noreferrer">WhatsApp</a>}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div key={x.b.id} className="evento evento--bloqueio">
+            <span className="evento__hora">{hora(x.b.inicio)}<small>{hora(x.b.fim)}</small></span>
+            <div className="evento__corpo">
+              <strong>Bloqueado {x.b.motivo && `· ${x.b.motivo}`}</strong>
+              {mostrarProf && <span className="suave">{x.b.profissional}</span>}
+              <div className="evento__acoes"><button className="chip" onClick={() => liberar(x.b)}>Liberar</button></div>
+            </div>
+          </div>
+        ))}
     </div>
   )
 }

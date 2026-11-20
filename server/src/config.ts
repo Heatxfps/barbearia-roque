@@ -39,6 +39,9 @@ export const config = {
     diasRetorno: Number(env.DIAS_RETORNO ?? 20),
   },
 
+  /** manda para o WhatsApp da barbearia cada horário marcado/cancelado pelo app */
+  avisarBarbearia: env.AVISAR_BARBEARIA !== '0',
+
   /** liga os lembretes automáticos (desligado nos testes) */
   jobs: env.JOBS !== '0',
 }

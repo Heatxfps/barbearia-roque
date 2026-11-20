@@ -78,7 +78,7 @@ export default function Perfil({ navegar }: { navegar: Navegar }) {
 
       {cliente && (
         <>
-          <h2 className="secao">Sua conta</h2>
+          <Ornamento texto="Sua conta" />
           <section className="cartao">
             <strong>{cliente.nome}</strong>
             <p className="suave">{formatarTelefone(cliente.telefone)}</p>

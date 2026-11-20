@@ -52,6 +52,10 @@ export type Resumo = {
 export type ItemAgenda = Agendamento & { origem: 'app' | 'balcao'; cliente: string; telefone: string; visitas: number }
 export type Bloqueio = { id: string; inicio: string; fim: string; motivo: string; profissionalId: string; profissional: string }
 export type Mensagem = { id: string; telefone: string; tipo: string; texto: string; status: string; erro?: string; criadoEm: string }
+export type UsuarioLista = { id: string; nome: string; email: string; papel: 'dono' | 'barbeiro'; profissionalId: string | null }
+export type Expediente = { dia: number; inicio: string; fim: string; intervaloInicio: string | null; intervaloFim: string | null }
+export type ProfissionalPainel = Profissional & { ativo: boolean; expediente: Expediente[] }
+export type DadosBarbearia = { nome: string; cidade: string; endereco: string; whatsapp: string; instagram: string; dono: string }
 export type ClientePainel = { id: string; nome: string; telefone: string; visitas: number; faltas: number; ultimaVisita: string | null }
 
 export interface Api {
@@ -84,5 +88,13 @@ export interface Api {
     mensagens(): Promise<Mensagem[]>
     servicos(): Promise<Servico[]>
     salvarServico(id: string | null, s: Omit<Servico, 'id'>): Promise<void>
+    // só o dono
+    salvarBarbearia(d: Partial<DadosBarbearia>): Promise<void>
+    profissionais(): Promise<ProfissionalPainel[]>
+    salvarProfissional(id: string, p: { nome: string; especialidade: string; ativo: boolean; expediente: Expediente[] }): Promise<void>
+    usuarios(): Promise<UsuarioLista[]>
+    criarUsuario(d: { nome: string; email: string; senha: string; profissionalId: string }): Promise<void>
+    removerUsuario(id: string): Promise<void>
+    trocarSenha(atual: string, nova: string): Promise<void>
   }
 }

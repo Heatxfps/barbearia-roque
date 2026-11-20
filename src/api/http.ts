@@ -70,5 +70,12 @@ export const apiHttp: Api = {
     mensagens: () => p('GET', '/admin/mensagens'),
     servicos: async () => (await p<(Record<string, unknown>)[]>('GET', '/admin/servicos')).map((s) => ({ ...s, destaque: !!s.destaque, ativo: !!s.ativo })) as never,
     salvarServico: async (id, s) => { await p(id ? 'PUT' : 'POST', id ? `/admin/servicos/${id}` : '/admin/servicos', s) },
+    salvarBarbearia: async (d) => { await p('PUT', '/admin/barbearia', d) },
+    profissionais: async () => (await p<(Record<string, unknown>)[]>('GET', '/admin/profissionais')).map((x) => ({ ...x, ativo: !!x.ativo })) as never,
+    salvarProfissional: async (id, d) => { await p('PUT', `/admin/profissionais/${id}`, d) },
+    usuarios: () => p('GET', '/admin/usuarios'),
+    criarUsuario: async (d) => { await p('POST', '/admin/usuarios', d) },
+    removerUsuario: async (id) => { await p('DELETE', `/admin/usuarios/${id}`) },
+    trocarSenha: async (atual, nova) => { await p('PUT', '/admin/senha', { atual, nova }) },
   },
 }

@@ -31,20 +31,22 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 |---|---|---|---|
 | POST | `/admin/login` `{ email, senha }` | todos | `{ token, usuario }` |
 | GET | `/admin/eu` | todos | Usuário logado |
-| GET | `/admin/resumo?data=` | todos | Números do dia e do mês, ranking, clientes para chamar de volta |
-| GET | `/admin/agenda?data=&profissional=` | todos* | Agendamentos e bloqueios do dia |
-| PATCH | `/admin/agendamentos/:id` `{ status }` | todos* | `concluido`, `faltou`, `cancelado` ou `confirmado` |
-| POST | `/admin/agendamentos` `{ nome, telefone?, servicoId, profissionalId, data, hora }` | todos* | Encaixe / cliente de balcão |
-| GET/POST/DELETE | `/admin/bloqueios` | todos* | Folgas e horários travados (`profissionalId: "todos"` fecha a casa) |
+| GET | `/admin/resumo?data=` | todos* | Números do dia e do mês, ranking, clientes para chamar de volta (só o dono) |
+| GET | `/admin/agenda?data=&profissional=` | todos | Agendamentos e bloqueios do dia (`profissional=todos` = agenda da casa) |
+| PATCH | `/admin/agendamentos/:id` `{ status }` | todos | `concluido`, `faltou`, `cancelado` ou `confirmado` |
+| POST | `/admin/agendamentos` `{ nome, telefone?, servicoId, profissionalId, data, hora }` | todos | Encaixe / cliente de balcão |
+| GET/POST/DELETE | `/admin/bloqueios` | todos | Folgas e horários travados (`profissionalId: "todos"` fecha a casa) |
 | GET | `/admin/clientes?busca=` | todos | Clientes com visitas, faltas e última visita |
 | GET | `/admin/mensagens` | todos | Últimas 60 mensagens de WhatsApp |
 | GET/POST/PUT | `/admin/servicos[/:id]` | dono | Serviços e preços |
 | GET/POST/PUT | `/admin/profissionais[/:id]` | dono | Profissionais e expediente por dia da semana |
-| PUT | `/admin/barbearia` | dono | Nome, endereço, WhatsApp, Instagram |
+| PUT | `/admin/barbearia` | dono | Nome, cidade, endereço, WhatsApp (com 55 e DDD), Instagram, fundador (`dono`) |
+| GET | `/admin/usuarios` | dono | Quem tem acesso ao painel |
 | POST | `/admin/usuarios` `{ nome, email, senha, profissionalId }` | dono | Cria acesso de barbeiro |
-| PUT | `/admin/senha` `{ atual, nova }` | dono | Troca a senha |
+| DELETE | `/admin/usuarios/:id` | dono | Remove o acesso de um barbeiro |
+| PUT | `/admin/senha` `{ atual, nova }` | todos | Troca a própria senha (mínimo 8 caracteres) |
 
-\* O barbeiro vê e altera só a própria agenda.
+\* A **agenda é conjunta**: os barbeiros veem e mexem na agenda da casa toda (na Roque não há recepcionista). No resumo, o barbeiro vê só os próprios números, sem a lista de clientes para chamar de volta.
 
 ## Tarefas automáticas (a cada minuto)
 
@@ -53,6 +55,7 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 - **Lembrete 1 h antes**
 - **"Volte a cortar"**: clientes há `DIAS_RETORNO` dias sem vir e sem horário marcado (só das 10h às 19h, uma vez por visita)
 - **Aviso de cancelamento**
+- **Aviso para a barbearia**: cada horário marcado ou cancelado pelo cliente no app gera uma mensagem no WhatsApp da própria barbearia (desligue com `AVISAR_BARBEARIA=0`)
 
 ## Segurança
 

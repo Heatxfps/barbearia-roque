@@ -22,6 +22,20 @@ export const textos = {
   cancelamento: (i: Info) =>
     `${primeiro(i.nome)}, seu horário de *${i.servico}* (${quando(i.inicio)}) foi cancelado. Quando quiser, é só agendar de novo pelo app.`,
 
+  // ---- para o WhatsApp da própria barbearia ----
+  avisoNovo: (i: Info & { telefone: string }) =>
+    `📲 *Novo horário pelo app*
+${i.nome} · ${i.servico}
+👤 ${i.profissional}
+📅 ${quando(i.inicio)}
+WhatsApp: +${i.telefone}`,
+
+  avisoCancelou: (i: Info & { telefone: string }) =>
+    `❌ *Cancelado pelo cliente*
+${i.nome} · ${i.servico} com ${i.profissional}
+📅 ${quando(i.inicio)}
+O horário já voltou a ficar livre no app.`,
+
   retorno: (nome: string, dias: number, barbearia: string) =>
     `E aí, ${primeiro(nome)}! Já faz ${dias} dias desde o seu último corte na *${barbearia}*. Bora dar aquele tapa no visual? Agende pelo app em 20 segundos. ✂️`,
 }

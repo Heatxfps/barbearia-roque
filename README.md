@@ -2,31 +2,35 @@
 
 Aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, login pelo WhatsApp, lembretes automáticos, cartão fidelidade e painel completo para o dono, com a identidade visual premium da casa.
 
-> **Status:** v1.0, com app e servidor completos e testados. Serviços, preços e equipe são **exemplos** (editáveis pelo painel). Veja [docs/PENDENCIAS.md](docs/PENDENCIAS.md).
+> **Status:** v1.1 premium, com app, painel e servidor completos e testados. Equipe real (Daniel Andrade e Guilherme Moreira) e fundador (Luciano Roque). Serviços e preços ainda são **exemplos**, editáveis pelo painel. Veja [docs/PENDENCIAS.md](docs/PENDENCIAS.md).
 
 **Vitrine (modo offline, sem servidor):** https://heatxfps.github.io/barbearia-roque/ · painel: [`/#painel`](https://heatxfps.github.io/barbearia-roque/#painel) (demo: `dono@roque.local` / `roque123`)
 
 ## O que tem
 
 **Para o cliente (app)**
-- Abertura animada: a parede da barbearia acende e a logo se monta no lugar do letreiro
-- Agendamento: serviço → profissional (ou "sem preferência") → dia → horário. Respeita duração, almoço, folgas e horários ocupados
+- Abertura animada: a parede da barbearia acende e a logo se monta no lugar do letreiro, e a tela inicial continua na mesma parede
+- Visual editorial premium: retratos dos barbeiros, serviços em formato de cardápio, detalhes em dourado
+- Agendamento: serviço → barbeiro (ou "sem preferência") → dia → horário, ou direto pela foto do barbeiro. Respeita duração, almoço, folgas e horários ocupados
 - Login **sem senha**: código de 6 dígitos no WhatsApp
 - Meus horários: remarcar, cancelar (até 2 h antes) e histórico
 - Cartão fidelidade com selos reais (10 atendimentos = 1 grátis)
-- Informações da casa, horário de funcionamento, WhatsApp, Instagram e mapa
+- **Dia do Noivo**: página do making of de noivo, com pedido de orçamento pronto no WhatsApp
+- A Roque: fundador, horário de funcionamento, WhatsApp, Instagram e mapa
 
 **Para a barbearia (painel em `/#painel`)**
-- Agenda do dia por profissional, com ações: **concluído**, **faltou**, **cancelar** e WhatsApp do cliente
+- **Agenda conjunta**: uma coluna por barbeiro, com foto, e ações **concluído**, **faltou**, **cancelar** e WhatsApp do cliente
 - Encaixe de cliente de balcão e **bloqueio** de horários (folga, médico, casa fechada)
 - Números: atendimentos, previsto do dia, faturado no mês, taxa de falta, % marcado pelo app, ranking por profissional e serviço
 - **Clientes para chamar de volta** (20+ dias sem vir)
 - Histórico de todas as mensagens de WhatsApp
-- Edição de serviços e preços (o app atualiza na hora)
-- Acesso de barbeiro: cada um vê só a própria agenda
+- **Divulgação**: link e QR code do app, cartaz para imprimir e textos prontos para a saudação do WhatsApp Business e a bio do Instagram
+- **Ajustes**: dados da barbearia, serviços e preços, horários de cada barbeiro, acessos e troca de senha (o app atualiza na hora)
+- Acesso de barbeiro: veem e mexem na agenda da casa toda, mas não no faturamento nem nos ajustes
 
 **Automático (servidor)**
-- Confirmação, lembrete 24 h antes, lembrete 1 h antes, aviso de cancelamento e "volte a cortar" pelo WhatsApp
+- Para o cliente: confirmação, lembrete 24 h antes, lembrete 1 h antes, aviso de cancelamento e "volte a cortar" pelo WhatsApp
+- Para a barbearia: aviso no WhatsApp da casa a cada horário marcado ou cancelado pelo app
 
 ## Rodar no computador
 
@@ -57,8 +61,26 @@ npm run dev
 ```
 
 - App: `http://localhost:5173`
-- Painel: `http://localhost:5173/#painel` (padrão: `dono@roque.local` / `roque123`; troque em `server/.env`)
+- Painel: `http://localhost:5173/#painel` (padrão de demonstração: `dono@roque.local` / `roque123`)
 - No celular, na mesma rede Wi-Fi: use o endereço "Network" que o Vite mostra
+
+### Servidor local no modo produção
+
+Um terminal só, igual vai rodar na VPS: o servidor entrega o app pronto e a API no mesmo endereço.
+
+```powershell
+npm run local
+```
+
+Ele mostra os endereços para abrir no computador e no celular (mesmo Wi-Fi), por exemplo `http://192.168.1.15:3333`. Na primeira vez o Windows pode pedir para liberar o Node no firewall: aceite para **redes privadas**.
+
+Para ter senha e segredo próprios em vez dos de demonstração, gere o `server/.env` uma vez:
+
+```powershell
+npm --prefix server run configurar -- --email dono@roque.local
+```
+
+> No celular, pelo IP local, o app abre e agenda normalmente, mas não dá para "instalar" na tela inicial: isso exige HTTPS, que vem com a VPS e o domínio.
 
 Testes automáticos da API:
 
@@ -68,7 +90,7 @@ npm test
 
 ## Publicar
 
-- **VPS (produção):** Docker + HTTPS automático. Passo a passo em [docs/DEPLOY-VPS.md](docs/DEPLOY-VPS.md)
+- **VPS (produção):** um script instala tudo (Docker, HTTPS automático, backup diário): `sudo bash deploy/instalar.sh`. Passo a passo em [docs/DEPLOY-VPS.md](docs/DEPLOY-VPS.md)
 - **GitHub Pages (vitrine):** automático a cada push na `main`, em modo offline (dados fictícios no próprio celular)
 
 > O material comercial (proposta e preços) fica na pasta local `privado/`, que está no `.gitignore` e nunca vai para o GitHub.
@@ -87,10 +109,13 @@ server/                  API (Node.js + Fastify + SQLite)
   src/jobs.ts            Lembretes e "volte a cortar"
   src/whatsapp.ts        Envio (demo, Evolution API, Z-API)
   src/seed-demo.ts       Dados fictícios para apresentação
+  src/configurar.ts      Gera o server/.env com segredos novos
   test/                  Testes automáticos
-deploy/ Dockerfile docker-compose.yml   Publicação na VPS
-tools/                   Scripts que geraram as peças da logo e o fundo
-originais/               Logo e foto originais
+deploy/instalar.sh      Instalação completa na VPS
+deploy/backup.sh         Backup do banco (roda todo dia pelo cron)
+Dockerfile docker-compose.yml deploy/Caddyfile   Contêineres e HTTPS
+tools/                   Scripts das peças da logo e das fotos da equipe
+originais/               Logo, fotos da parede (e da equipe, fora do Git)
 docs/                    Documentação
 ```
 
@@ -112,4 +137,4 @@ docs/                    Documentação
 | `#c8935a` / `#e2b27a` | Cobre da luz das luminárias (botões e destaques) |
 | `#d3313a` / `#2f7fd6` | Vermelho e azul do poste de barbeiro (só na logo) |
 
-Fontes: **Cinzel** (títulos) e **Inter** (textos).
+Fontes: **Cormorant Garamond** (títulos editoriais e preços), **Cinzel** (rótulos em caixa alta) e **Inter** (textos).

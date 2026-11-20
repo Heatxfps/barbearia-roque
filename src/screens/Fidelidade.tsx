@@ -1,6 +1,7 @@
 import type { Navegar } from '../App'
 import Entrar from '../components/Entrar'
 import { useApp } from '../contexto'
+import { Ornamento } from './Inicio'
 
 const B = import.meta.env.BASE_URL
 
@@ -43,8 +44,8 @@ export default function Fidelidade({ navegar }: { navegar: Navegar }) {
         </section>
       )}
 
-      <h2 className="secao">Como funciona</h2>
-      <ol className="passos">
+      <Ornamento texto="Como funciona" />
+      <ol className="passos passos--ed">
         <li>Agende pelo app e venha no horário.</li>
         <li>O selo entra sozinho quando o barbeiro finaliza o atendimento.</li>
         <li>No {meta}º atendimento, é por nossa conta.</li>

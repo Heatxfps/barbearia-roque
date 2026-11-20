@@ -37,6 +37,15 @@
         "--strictPort"
       ],
       "port": 5174
+    },
+    {
+      "name": "roque-local",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "local"
+      ],
+      "port": 3333
     }
   ]
 }
