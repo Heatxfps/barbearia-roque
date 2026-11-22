@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState } from 'react'
 import Icone from '../../components/Icone'
 import { api, type PedidoPainel, type Produto, type StatusPedido } from '../../api'
 import { useApp } from '../../contexto'
-import { dataCurta, foto, formatarTelefone, hora, lerImagem, linkWhats, moeda } from '../../util'
+import { dataCurta, foto, formatarTelefone, hora, linkWhats, moeda } from '../../util'
+import EscolherFoto from '../../components/EscolherFoto'
 
 const ROTULO: Record<StatusPedido, string> = { novo: 'Novo', separado: 'Separado', retirado: 'Retirado', cancelado: 'Cancelado' }
 
@@ -96,19 +97,9 @@ export function Produtos({ avisar }: { avisar: (t: string, tipo?: 'ok' | 'erro')
 function EditarProduto({ inicial, aoSalvar, cancelar, remover }: { inicial: Omit<Produto, 'id'>; aoSalvar: (p: Omit<Produto, 'id'>) => void; cancelar: () => void; remover?: () => void }) {
   const { avisar } = useApp()
   const [p, setP] = useState(inicial)
-  const [enviando, setEnviando] = useState(false)
-  const escolher = async (arq?: File) => {
-    if (!arq) return
-    setEnviando(true)
-    try { setP({ ...p, foto: await api.painel.enviarFoto(await lerImagem(arq, 700)) }) } catch (e) { avisar((e as Error).message, 'erro') } finally { setEnviando(false) }
-  }
   return (
     <div className="cartao form">
-      <label className="escolher-foto escolher-foto--quadrada">
-        {p.foto ? <img src={foto(p.foto)} alt="" /> : <span className="escolher-foto__vazio">{p.nome.trim()[0] ?? '?'}</span>}
-        <span className="escolher-foto__acao"><Icone nome="camera" tam={16} /> {enviando ? 'Enviando…' : p.foto ? 'Trocar foto' : 'Pôr foto'}</span>
-        <input type="file" accept="image/*" hidden onChange={(e) => escolher(e.target.files?.[0])} />
-      </label>
+      <EscolherFoto tipo="produto" valor={p.foto} mudar={(foto) => setP({ ...p, foto })} nome={p.nome} />
       <label className="campo"><span>Nome</span><input value={p.nome} onChange={(e) => setP({ ...p, nome: e.target.value })} /></label>
       <label className="campo"><span>Descrição curta</span><input value={p.descricao} onChange={(e) => setP({ ...p, descricao: e.target.value.slice(0, 120) })} /></label>
       <label className="campo"><span>Preço (R$)</span><input type="number" inputMode="decimal" min={0} step={1} value={p.preco} onChange={(e) => setP({ ...p, preco: Number(e.target.value) })} /></label>

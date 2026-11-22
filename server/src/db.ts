@@ -163,6 +163,31 @@ CREATE TABLE IF NOT EXISTS pedido_itens (
   qtd INTEGER NOT NULL
 );
 
+-- mensagens editadas pelo dono (texto, ligada/desligada, tempo); sem linha = texto padrão
+CREATE TABLE IF NOT EXISTS modelos (
+  chave TEXT PRIMARY KEY,
+  texto TEXT,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  valor INTEGER
+);
+
+-- mensagens automáticas criadas pelo dono
+CREATE TABLE IF NOT EXISTS automacoes (
+  id TEXT PRIMARY KEY,
+  nome TEXT NOT NULL,
+  gatilho TEXT NOT NULL,     -- antes_horario | depois_atendimento | dias_depois | primeira_visita
+  valor INTEGER NOT NULL,    -- horas ou dias
+  texto TEXT NOT NULL,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  criado_em TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS automacao_envios (
+  automacao_id TEXT NOT NULL,
+  ref TEXT NOT NULL,         -- id do agendamento
+  enviado_em TEXT NOT NULL,
+  PRIMARY KEY (automacao_id, ref)
+);
+
 CREATE TABLE IF NOT EXISTS usuarios (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,

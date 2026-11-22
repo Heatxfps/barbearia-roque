@@ -3,15 +3,22 @@
  * e um cartaz para imprimir e deixar no balcão.
  * Hoje os clientes marcam pelo WhatsApp: a mensagem automática é o que leva cada um para o app.
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import QRCode from 'qrcode'
 import Icone from '../../components/Icone'
 import { useApp } from '../../contexto'
+import { api, type ModeloMsg, type UsuarioPainel } from '../../api'
+import { VARIAVEIS, preencher } from '../../../shared/modelos'
 
 const B = import.meta.env.BASE_URL
 
-export default function Divulgacao() {
+export default function Divulgacao({ usuario }: { usuario: UsuarioPainel }) {
   const { barbearia, avisar } = useApp()
+  const dono = usuario.papel === 'dono'
+  const [modelos, setModelos] = useState<ModeloMsg[] | null>(null)
+  const [editando, setEditando] = useState<string | null>(null)
+  const carregar = useCallback(() => { api.painel.modelos().then(setModelos).catch(() => setModelos([])) }, [])
+  useEffect(() => { carregar() }, [carregar])
   // o painel fica em outro endereço: o link divulgado é sempre o do app do cliente
   const link = (barbearia?.urlApp ? `${barbearia.urlApp.replace(/\/$/, '')}/` : new URL('./', location.href).href)
   const [qr, setQr] = useState('')
@@ -23,24 +30,8 @@ export default function Divulgacao() {
 
   if (!barbearia) return null
   const nome = barbearia.nome
-  const textos = [
-    {
-      titulo: 'Mensagem de saudação do WhatsApp Business',
-      dica: 'WhatsApp Business → Ferramentas comerciais → Mensagem de saudação. Quem chamar a barbearia recebe o link na hora, mesmo com vocês no meio de um corte.',
-      texto: `Olá! Que bom falar com a *${nome}* ✂️\n\nPara marcar seu horário em segundos, escolha o barbeiro e o horário direto no nosso app:\n${link}\n\nSe preferir, deixe sua mensagem que respondemos assim que sairmos da cadeira.`,
-    },
-    {
-      titulo: 'Mensagem de ausência (fora do expediente)',
-      dica: 'WhatsApp Business → Ferramentas comerciais → Mensagem de ausência → "Fora do horário comercial".',
-      texto: `Estamos fechados agora, mas a agenda da *${nome}* funciona 24h 🕐\nMarque seu horário pelo app: ${link}`,
-    },
-    {
-      titulo: 'Bio do Instagram',
-      dica: 'Cole no perfil e use o link como "link na bio".',
-      texto: `✂️ Barbearia clássica em ${barbearia.cidade.split(' - ')[0]}\n📲 Agende pelo app: ${link}`,
-    },
-  ]
-
+  const vars = { barbearia: nome, link, cidade: barbearia.cidade.split(' - ')[0] }
+  const textos = (modelos ?? []).filter((m) => m.grupo === 'divulgacao')
   const copiar = async (t: string, o: string) => {
     try { await navigator.clipboard.writeText(t); avisar(`${o} copiado`) } catch { avisar('Não deu para copiar. Selecione o texto e copie.', 'erro') }
   }
@@ -62,11 +53,20 @@ export default function Divulgacao() {
           {link.includes('localhost') && <p className="suave pequeno">Este é o endereço deste computador. Na VPS, com o domínio, o link e o QR code mudam sozinhos.</p>}
         </div>
 
-        {textos.map((t) => (
-          <div key={t.titulo} className="cartao">
-            <div className="linha-entre"><h3>{t.titulo}</h3><button className="chip" onClick={() => copiar(t.texto, 'Texto')}>Copiar</button></div>
-            <p className="mensagem__texto">{t.texto.replace(/\*/g, '')}</p>
-            <p className="suave pequeno">{t.dica}</p>
+        {!modelos && <div className="cartao cartao--esqueleto" />}
+        {textos.map((t) => editando === t.chave ? (
+          <EditarTexto key={t.chave} m={t} vars={vars} fechar={() => setEditando(null)} salvo={() => { setEditando(null); carregar() }} />
+        ) : (
+          <div key={t.chave} className="cartao">
+            <div className="linha-entre">
+              <h3>{t.nome}</h3>
+              <div className="evento__acoes">
+                {dono && <button className="chip" onClick={() => setEditando(t.chave)}>Editar</button>}
+                <button className="chip chip--ok" onClick={() => copiar(preencher(t.texto, vars), 'Texto')}>Copiar</button>
+              </div>
+            </div>
+            <p className="mensagem__texto">{preencher(t.texto, vars).replace(/\*/g, '')}</p>
+            <p className="suave pequeno">{t.descricao}</p>
           </div>
         ))}
       </section>
@@ -82,6 +82,31 @@ export default function Divulgacao() {
         <button className="botao botao--fantasma" onClick={() => window.print()}><Icone nome="painel" tam={18} /> Imprimir cartaz</button>
         <p className="suave pequeno centro">Imprima em A4 ou A5 e deixe no balcão e no espelho. Quem escanear já cai na agenda da Roque.</p>
       </aside>
+    </div>
+  )
+}
+
+/** Editar um texto de divulgação (só o dono) */
+function EditarTexto({ m, vars, fechar, salvo }: { m: ModeloMsg; vars: Record<string, string>; fechar: () => void; salvo: () => void }) {
+  const { avisar } = useApp()
+  const [texto, setTexto] = useState(m.texto)
+  const salvar = async (t: string | null) => {
+    try { await api.painel.salvarModelo(m.chave, { texto: t }); avisar(t === null ? 'Texto original restaurado' : 'Texto salvo'); salvo() } catch (e) { avisar((e as Error).message, 'erro') }
+  }
+  return (
+    <div className="cartao form">
+      <h3>{m.nome}</h3>
+      <label className="campo"><span>Texto</span><textarea rows={6} value={texto} onChange={(e) => setTexto(e.target.value.slice(0, 1000))} /></label>
+      <div className="variaveis">
+        <span className="suave pequeno">Inserir:</span>
+        {m.variaveis.map((v) => <button key={v} type="button" className="chip" onClick={() => setTexto(texto + `{${v}}`)}>{VARIAVEIS[v]?.rotulo ?? v}</button>)}
+      </div>
+      <div className="previa"><span className="suave pequeno">Como fica</span><p className="mensagem__texto">{preencher(texto, vars).replace(/\*/g, '')}</p></div>
+      <div className="acoes">
+        <button className="botao botao--principal pequeno" disabled={texto.trim().length < 5} onClick={() => salvar(texto)}>Salvar</button>
+        <button className="botao botao--fantasma pequeno" onClick={fechar}>Cancelar</button>
+        {texto !== m.padrao && <button className="botao botao--fantasma pequeno acoes__direita" onClick={() => salvar(null)}>Restaurar original</button>}
+      </div>
     </div>
   )
 }

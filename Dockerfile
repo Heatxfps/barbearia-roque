@@ -3,7 +3,8 @@ FROM node:24-alpine AS app
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
-COPY index.html vite.config.ts tsconfig.json ./
+COPY index.html painel.html vite.config.ts tsconfig.json ./
+COPY shared ./shared
 COPY public ./public
 COPY src ./src
 RUN npm run build
@@ -20,6 +21,7 @@ WORKDIR /srv/server
 COPY server/package*.json ./
 RUN npm ci --omit=dev
 COPY server/src ./src
+COPY shared /srv/shared
 COPY --from=app /app/dist /srv/dist
 VOLUME /dados
 EXPOSE 3333

@@ -1,4 +1,5 @@
 /** Tipos compartilhados entre o app e a API. */
+import type { Gatilho, ModeloPadrao } from '../../shared/modelos'
 
 export type Servico = { id: string; nome: string; descricao: string; preco: number; duracao: number; destaque: boolean; ativo?: boolean }
 export type Profissional = { id: string; nome: string; especialidade: string; foto?: string | null }
@@ -14,6 +15,7 @@ export type Barbearia = {
   /** endereço público do app do cliente (o painel fica em outro endereço) */
   urlApp?: string
   descontoAniversario?: number
+  validadeAniversario?: number
   horarios: Record<number, [string, string] | null>
   fidelidadeMeta: number
   diasAgenda: number
@@ -75,11 +77,15 @@ export type ResumoAvaliacoes = {
   media: number; total: number
   porProfissional: { id: string; nome: string; foto: string | null; media: number; n: number }[]
   recentes: { id: string; nota: number; comentario: string; criadoEm: string; cliente: string; profissional: string }[]
+  distribuicao?: { nota: number; n: number }[]
 }
 export type UsuarioLista = { id: string; nome: string; email: string; papel: 'dono' | 'barbeiro'; profissionalId: string | null }
 export type Expediente = { dia: number; inicio: string; fim: string; intervaloInicio: string | null; intervaloFim: string | null }
 export type ProfissionalPainel = Profissional & { ativo: boolean; expediente: Expediente[] }
-export type DadosBarbearia = { nome: string; cidade: string; endereco: string; whatsapp: string; instagram: string; dono: string; google_avaliacao: string; desconto_aniversario: number }
+export type DadosBarbearia = { nome: string; cidade: string; endereco: string; whatsapp: string; instagram: string; dono: string; google_avaliacao: string; desconto_aniversario: number; validade_aniversario: number }
+export type ModeloMsg = ModeloPadrao & { padrao: string; ativo: boolean; valor: number | null; personalizado: boolean }
+export type Automacao = { id: string; nome: string; gatilho: Gatilho; valor: number; texto: string; ativo: boolean }
+export type ItemFila = { quando: string; tipo: string; nome: string; telefone: string; resumo: string }
 export type NovoProfissional = { nome: string; especialidade: string; ativo: boolean; foto?: string | null; expediente?: Expediente[] }
 export type ClientePainel = { id: string; nome: string; telefone: string; visitas: number; faltas: number; ultimaVisita: string | null }
 
@@ -131,7 +137,13 @@ export interface Api {
     bloquear(d: { profissionalId: string; data: string; inicio: string; fim: string; motivo: string }): Promise<void>
     desbloquear(id: string): Promise<void>
     clientes(busca: string): Promise<ClientePainel[]>
-    mensagens(): Promise<Mensagem[]>
+    mensagens(status?: 'todas' | 'enviadas' | 'falharam'): Promise<Mensagem[]>
+    fila(): Promise<ItemFila[]>
+    modelos(): Promise<ModeloMsg[]>
+    salvarModelo(chave: string, d: { texto?: string | null; ativo?: boolean; valor?: number | null }): Promise<void>
+    automacoes(): Promise<Automacao[]>
+    salvarAutomacao(id: string | null, d: Omit<Automacao, 'id'>): Promise<void>
+    removerAutomacao(id: string): Promise<void>
     servicos(): Promise<Servico[]>
     salvarServico(id: string | null, s: Omit<Servico, 'id'>): Promise<void>
     // só o dono

@@ -29,13 +29,14 @@ export async function rotasPublicas(app: FastifyInstance, db: DB) {
     const servicos = (db.prepare('SELECT id, nome, descricao, preco, duracao, destaque FROM servicos WHERE ativo = 1 ORDER BY ordem').all() as { destaque: number }[])
       .map((s) => ({ ...s, destaque: !!s.destaque }))
     const profissionais = db.prepare('SELECT id, nome, especialidade, foto FROM profissionais WHERE ativo = 1 ORDER BY ordem').all()
-    const { dono, dono_foto, google_avaliacao, desconto_aniversario, produtos_semeados: _, ...resto } = info
+    const { dono, dono_foto, google_avaliacao, desconto_aniversario, validade_aniversario, produtos_semeados: _, ...resto } = info
     return {
       ...resto,
       dono: dono ? { nome: dono, foto: dono_foto ?? null } : null,
       googleAvaliacao: google_avaliacao ?? '',
       urlApp: config.urlApp,
       descontoAniversario: Number(desconto_aniversario ?? 15),
+      validadeAniversario: Number(validade_aniversario ?? config.regras.diasCupom),
       horarios: horariosDaCasa(db),
       fidelidadeMeta: config.regras.fidelidadeMeta,
       diasAgenda: config.regras.diasAgenda,

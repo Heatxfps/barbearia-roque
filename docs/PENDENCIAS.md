@@ -33,7 +33,8 @@ Os dados de exemplo ficam no servidor: valores iniciais em [`server/src/db.ts`](
 
 - [ ] Quais produtos vendem, preço e foto de cada um (os 4 do app são exemplos)
 - [ ] Link de avaliação do Perfil da Empresa no Google (Ajustes → A barbearia)
-- [ ] Desconto de aniversário: 15% está bom? Vale para qualquer serviço?
+- [ ] Desconto de aniversário: 15% está bom? Validade (só no dia, 7, 15 ou 30 dias)? Vale para qualquer serviço?
+- [ ] Revisar com o Luciano o texto de cada mensagem do WhatsApp (Painel → Mensagens → Fluxo)
 
 ## Dia do Noivo
 

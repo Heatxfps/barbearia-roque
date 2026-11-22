@@ -7,7 +7,8 @@ import { useCallback, useEffect, useState } from 'react'
 import Icone from '../../components/Icone'
 import { api, type DadosBarbearia, type Expediente, type NovoProfissional, type ProfissionalPainel, type Servico, type UsuarioLista, type UsuarioPainel } from '../../api'
 import { useApp } from '../../contexto'
-import { foto, lerImagem, moeda } from '../../util'
+import { foto, moeda } from '../../util'
+import EscolherFoto from '../../components/EscolherFoto'
 import { Produtos } from './LojaPainel'
 
 type Avisar = (t: string, tipo?: 'ok' | 'erro') => void
@@ -50,10 +51,11 @@ function Barbearia({ avisar }: { avisar: Avisar }) {
     if (barbearia && !d) setD({
       nome: barbearia.nome, cidade: barbearia.cidade, endereco: barbearia.endereco, whatsapp: barbearia.whatsapp, instagram: barbearia.instagram,
       dono: barbearia.dono?.nome ?? '', google_avaliacao: barbearia.googleAvaliacao ?? '', desconto_aniversario: barbearia.descontoAniversario ?? 15,
+      validade_aniversario: barbearia.validadeAniversario ?? 30,
     })
   }, [barbearia, d])
   if (!d) return null
-  const campo = (k: Exclude<keyof DadosBarbearia, 'desconto_aniversario'>, rotulo: string, extra?: React.InputHTMLAttributes<HTMLInputElement>) => (
+  const campo = (k: Exclude<keyof DadosBarbearia, 'desconto_aniversario' | 'validade_aniversario'>, rotulo: string, extra?: React.InputHTMLAttributes<HTMLInputElement>) => (
     <label className="campo"><span>{rotulo}</span><input value={d[k]} onChange={(e) => setD({ ...d, [k]: e.target.value })} {...extra} /></label>
   )
   const salvar = async () => {
@@ -75,7 +77,19 @@ function Barbearia({ avisar }: { avisar: Avisar }) {
         <label className="campo"><span>Desconto de aniversário (%)</span>
           <input type="number" inputMode="numeric" min={0} max={100} value={d.desconto_aniversario} onChange={(e) => setD({ ...d, desconto_aniversario: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
         </label>
-        <p className="suave pequeno">O cliente recebe no WhatsApp no dia do aniversário e o desconto entra sozinho no próximo horário (vale 30 dias). Use 0 para desligar.</p>
+        <label className="campo"><span>Validade do cupom</span>
+          <select value={d.validade_aniversario} onChange={(e) => setD({ ...d, validade_aniversario: Number(e.target.value) })}>
+            <option value={0}>Só no dia do aniversário</option>
+            <option value={7}>7 dias</option>
+            <option value={15}>15 dias</option>
+            <option value={30}>30 dias</option>
+            <option value={60}>60 dias</option>
+          </select>
+        </label>
+        <p className="suave pequeno">
+          No dia do aniversário (a partir das 9h) o cliente recebe a mensagem no WhatsApp.
+          O desconto entra sozinho no próximo horário marcado {d.validade_aniversario === 0 ? 'para o próprio dia do aniversário' : `para até ${d.validade_aniversario} dias depois`}, uma vez só. Use 0% para desligar.
+        </p>
         <button className="botao botao--principal pequeno" onClick={salvar}>Salvar dados</button>
       </div>
     </>
@@ -174,30 +188,12 @@ function Equipe({ avisar }: { avisar: Avisar }) {
   )
 }
 
-/** Foto redonda com botão para trocar (reduz no celular antes de enviar) */
-function EscolherFoto({ valor, mudar, nome }: { valor: string | null | undefined; mudar: (url: string) => void; nome: string }) {
-  const { avisar } = useApp()
-  const [enviando, setEnviando] = useState(false)
-  const escolher = async (arq?: File) => {
-    if (!arq) return
-    setEnviando(true)
-    try { mudar(await api.painel.enviarFoto(await lerImagem(arq))) } catch (e) { avisar((e as Error).message, 'erro') } finally { setEnviando(false) }
-  }
-  return (
-    <label className="escolher-foto">
-      {valor ? <img src={foto(valor, 'avatar')} alt="" /> : <span className="escolher-foto__vazio">{nome.trim()[0] ?? '?'}</span>}
-      <span className="escolher-foto__acao"><Icone nome="camera" tam={16} /> {enviando ? 'Enviando…' : valor ? 'Trocar foto' : 'Pôr foto'}</span>
-      <input type="file" accept="image/*" hidden onChange={(e) => escolher(e.target.files?.[0])} />
-    </label>
-  )
-}
-
 function NovoBarbeiro({ aoSalvar, cancelar }: { aoSalvar: (p: NovoProfissional) => void; cancelar: () => void }) {
   const [p, setP] = useState<NovoProfissional>({ nome: '', especialidade: '', ativo: true, foto: null })
   return (
     <div className="cartao form">
       <h3>Novo barbeiro</h3>
-      <EscolherFoto valor={p.foto} mudar={(foto) => setP({ ...p, foto })} nome={p.nome} />
+      <EscolherFoto tipo="barbeiro" valor={p.foto} mudar={(foto) => setP({ ...p, foto })} nome={p.nome} />
       <div className="campos-2">
         <label className="campo"><span>Nome</span><input value={p.nome} onChange={(e) => setP({ ...p, nome: e.target.value })} placeholder="Nome e sobrenome" /></label>
         <label className="campo"><span>Especialidade</span><input value={p.especialidade} onChange={(e) => setP({ ...p, especialidade: e.target.value })} placeholder="Degradê, barba…" /></label>
@@ -227,7 +223,7 @@ function EditarProfissional({ inicial, aoSalvar, cancelar, excluir }: {
 
   return (
     <div className="cartao form">
-      <EscolherFoto valor={p.foto} mudar={(foto) => setP({ ...p, foto })} nome={p.nome} />
+      <EscolherFoto tipo="barbeiro" valor={p.foto} mudar={(foto) => setP({ ...p, foto })} nome={p.nome} />
       <div className="campos-2">
         <label className="campo"><span>Nome</span><input value={p.nome} onChange={(e) => setP({ ...p, nome: e.target.value })} /></label>
         <label className="campo"><span>Especialidade</span><input value={p.especialidade} onChange={(e) => setP({ ...p, especialidade: e.target.value })} placeholder="Degradê, barba…" /></label>

@@ -8,7 +8,7 @@ import { agora, carimbo, dataIso, dataValida, horaValida } from '../tempo.ts'
 import { ErroNegocio, avisarBarbeariaTexto, cancelarAgendamento, criarAgendamento, cupomAtivo, fidelidade } from '../servicos-agendamento.ts'
 import { horariosLivres } from '../agenda.ts'
 import { enviarWhatsApp } from '../whatsapp.ts'
-import { textos } from '../textos.ts'
+import { montar } from '../mensagens.ts'
 
 /** "MM-DD" válido (aceita 29/02) */
 export const aniversarioValido = (s: string) => /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s) && !Number.isNaN(new Date(`2000-${s}T12:00`).getTime())
@@ -131,8 +131,10 @@ export async function rotasCliente(app: FastifyInstance, db: DB) {
     const c = db.prepare('SELECT nome, telefone FROM clientes WHERE id = ?').get(clienteId) as { nome: string; telefone: string }
     const total = itens.reduce((t, i) => t + i.preco * i.qtd, 0)
     const resumo = itens.map((i) => `• ${i.qtd}× ${i.nome}`).join('\n')
-    void enviarWhatsApp(db, c.telefone, 'pedido', textos.pedido(c.nome, resumo, moeda(total), lerBarbearia(db).nome))
-    void avisarBarbeariaTexto(db, 'aviso_pedido', textos.avisoPedido(c.nome, c.telefone, resumo + (b.observacao ? `\nObs.: ${b.observacao}` : ''), moeda(total)))
+    const txtCliente = montar(db, 'pedido', { nome: c.nome.split(' ')[0], itens: resumo, total: moeda(total) })
+    if (txtCliente) void enviarWhatsApp(db, c.telefone, 'pedido', txtCliente)
+    const txtCasa = montar(db, 'aviso_pedido', { nome: c.nome, telefone: c.telefone, itens: resumo + (b.observacao ? `\nObs.: ${b.observacao}` : ''), total: moeda(total) })
+    if (txtCasa) void avisarBarbeariaTexto(db, 'aviso_pedido', txtCasa)
     return reply.status(201).send({ id: pedidoId, total })
   })
 

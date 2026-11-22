@@ -14,12 +14,14 @@ import { horariosLivres } from './agenda.ts'
 import { agora, carimbo, dataIso, lerCarimbo, somarMin } from './tempo.ts'
 import { notificar } from './servicos-agendamento.ts'
 import { enviarWhatsApp } from './whatsapp.ts'
-import { textos } from './textos.ts'
+import { montar, tempoDe, varsAgendamento } from './mensagens.ts'
+import { preencher } from '../../shared/modelos.ts'
+import { dataExtenso } from './tempo.ts'
 
 type Linha = { id: string; inicio: string; criado_em: string }
 
 export function clientesParaRetorno(db: DB) {
-  const dias = config.regras.diasRetorno
+  const dias = tempoDe(db, 'retorno')
   const limite = carimbo(somarMin(agora(), -dias * 24 * 60))
   const agoraTxt = carimbo(agora())
   const linhas = db.prepare(`
@@ -40,24 +42,28 @@ export async function rodarTarefas(db: DB) {
   const agoraD = agora()
   const agoraTxt = carimbo(agoraD)
 
-  // lembrete de 24h
+  // lembrete da véspera (tempo configurável; padrão 24 h antes)
+  const h1 = tempoDe(db, 'lembrete_1h') * 60
+  const h24 = Math.max(tempoDe(db, 'lembrete_24h') * 60, h1 + 60)
   const em24 = db.prepare(`SELECT id, inicio, criado_em FROM agendamentos
                            WHERE status = 'confirmado' AND lembrete_24h = 0 AND inicio > ? AND inicio <= ?`)
-    .all(carimbo(somarMin(agoraD, 180)), carimbo(somarMin(agoraD, 24 * 60))) as Linha[]
+    .all(carimbo(somarMin(agoraD, h1 + 60)), carimbo(somarMin(agoraD, h24))) as Linha[]
   for (const a of em24) {
     db.prepare('UPDATE agendamentos SET lembrete_24h = 1 WHERE id = ?').run(a.id)
     // marcado em cima da hora: a confirmação já serve de lembrete
-    if (a.criado_em <= carimbo(somarMin(lerCarimbo(a.inicio), -24 * 60))) await notificar(db, a.id, 'lembrete_24h')
+    if (a.criado_em <= carimbo(somarMin(lerCarimbo(a.inicio), -h24))) await notificar(db, a.id, 'lembrete_24h')
   }
 
-  // lembrete de 1h
+  // lembrete em cima da hora (padrão 1 h antes)
   const em1 = db.prepare(`SELECT id, inicio, criado_em FROM agendamentos
                           WHERE status = 'confirmado' AND lembrete_1h = 0 AND inicio > ? AND inicio <= ?`)
-    .all(agoraTxt, carimbo(somarMin(agoraD, 60))) as Linha[]
+    .all(agoraTxt, carimbo(somarMin(agoraD, h1))) as Linha[]
   for (const a of em1) {
     db.prepare('UPDATE agendamentos SET lembrete_1h = 1 WHERE id = ?').run(a.id)
-    if (a.criado_em <= carimbo(somarMin(lerCarimbo(a.inicio), -90))) await notificar(db, a.id, 'lembrete_1h')
+    if (a.criado_em <= carimbo(somarMin(lerCarimbo(a.inicio), -(h1 + 30)))) await notificar(db, a.id, 'lembrete_1h')
   }
+
+  await rodarAutomacoes(db)
 
   await convidarAvaliacao(db)
   await parabenizar(db)
@@ -66,10 +72,10 @@ export async function rodarTarefas(db: DB) {
   // volte a cortar (só em horário comercial)
   const h = agoraD.getHours()
   if (h >= 10 && h < 19) {
-    const nome = lerBarbearia(db).nome
     for (const c of clientesParaRetorno(db).filter((c) => !c.avisado)) {
       db.prepare('UPDATE clientes SET aviso_retorno_em = ? WHERE id = ?').run(agoraTxt, c.id)
-      await enviarWhatsApp(db, c.telefone, 'retorno', textos.retorno(c.nome, c.dias, nome))
+      const texto = montar(db, 'retorno', { nome: c.nome.split(' ')[0], dias: c.dias })
+      if (texto) await enviarWhatsApp(db, c.telefone, 'retorno', texto)
     }
   }
 }
@@ -84,12 +90,11 @@ async function convidarAvaliacao(db: DB) {
                             WHERE a.status = 'concluido' AND a.avaliacao_enviada = 0 AND a.fim <= ? AND a.fim > ?
                               AND c.telefone NOT LIKE 'balcao-%'
                               AND NOT EXISTS (SELECT 1 FROM avaliacoes v WHERE v.agendamento_id = a.id)`)
-    .all(carimbo(somarMin(agoraD, -60)), carimbo(somarMin(agoraD, -48 * 60))) as { id: string; nome: string; telefone: string; profissional: string }[]
-  if (!lista.length) return
-  const nome = lerBarbearia(db).nome
+    .all(carimbo(somarMin(agoraD, -tempoDe(db, 'avaliacao') * 60)), carimbo(somarMin(agoraD, -48 * 60))) as { id: string; nome: string; telefone: string; profissional: string }[]
   for (const a of lista) {
     db.prepare('UPDATE agendamentos SET avaliacao_enviada = 1 WHERE id = ?').run(a.id)
-    await enviarWhatsApp(db, a.telefone, 'avaliacao', textos.avaliacao(a.nome, a.profissional, nome, `${config.urlApp}/#avaliar/${a.id}`))
+    const texto = montar(db, 'avaliacao', { nome: a.nome.split(' ')[0], barbeiro: a.profissional, link: `${config.urlApp}/#avaliar/${a.id}` })
+    if (texto) await enviarWhatsApp(db, a.telefone, 'avaliacao', texto)
   }
 }
 
@@ -106,13 +111,14 @@ async function parabenizar(db: DB) {
   const b = lerBarbearia(db)
   const pct = Math.min(100, Math.max(0, Number(b.desconto_aniversario ?? 15)))
   if (!pct) return
-  const validade = new Date(agoraD); validade.setDate(validade.getDate() + config.regras.diasCupom)
+  const validade = new Date(agoraD); validade.setDate(validade.getDate() + Math.max(0, Number(b.validade_aniversario ?? config.regras.diasCupom)))
   const validoAte = dataIso(validade)
   for (const c of lista) {
     db.prepare('UPDATE clientes SET aniversario_ano = ? WHERE id = ?').run(ano, c.id)
     db.prepare('INSERT INTO cupons (id, cliente_id, motivo, desconto_pct, valido_ate, criado_em) VALUES (?, ?, ?, ?, ?, ?)')
       .run(novoId(), c.id, 'aniversario', pct, validoAte, carimbo(agoraD))
-    await enviarWhatsApp(db, c.telefone, 'aniversario', textos.aniversario(c.nome, pct, `${validoAte.slice(8, 10)}/${validoAte.slice(5, 7)}`, b.nome, config.urlApp))
+    const texto = montar(db, 'aniversario', { nome: c.nome.split(' ')[0], desconto: pct, validade: validoAte === hoje ? 'hoje' : `${validoAte.slice(8, 10)}/${validoAte.slice(5, 7)}` })
+    if (texto) await enviarWhatsApp(db, c.telefone, 'aniversario', texto)
   }
 }
 
@@ -128,7 +134,6 @@ async function avisarEspera(db: DB) {
                              FROM espera e JOIN servicos s ON s.id = e.servico_id JOIN clientes c ON c.id = e.cliente_id
                              ORDER BY e.data, e.criado_em`).all() as
     { id: string; data: string; prof: string; avisadoEm: string | null; duracao: number; servico: string; nome: string; telefone: string }[]
-  const nome = lerBarbearia(db).nome
   const vezDe = new Set<string>()   // dias em que alguém ainda está na vez (avisado há menos de 30 min)
   for (const e of linhas) {
     if (e.avisadoEm && e.avisadoEm > limite) { vezDe.add(e.data); continue }
@@ -137,7 +142,44 @@ async function avisarEspera(db: DB) {
     if (!horas.length) continue
     vezDe.add(e.data)
     db.prepare('UPDATE espera SET avisado_em = ? WHERE id = ?').run(carimbo(agoraD), e.id)
-    await enviarWhatsApp(db, e.telefone, 'espera', textos.espera(e.nome, e.servico, e.data, horas, nome, config.urlApp))
+    const texto = montar(db, 'espera', { nome: e.nome.split(' ')[0], servico: e.servico, data: dataExtenso(e.data), horarios: horas.slice(0, 4).join(', ') + (horas.length > 4 ? '…' : '') })
+    if (texto) await enviarWhatsApp(db, e.telefone, 'espera', texto)
+  }
+}
+
+/** Automações criadas pelo dono. Cada uma vai uma vez por atendimento e nunca "para trás":
+ *  só conta o que vence depois que a automação foi criada (não dispara para o histórico). */
+async function rodarAutomacoes(db: DB) {
+  const lista = db.prepare('SELECT * FROM automacoes WHERE ativo = 1').all() as { id: string; gatilho: string; valor: number; texto: string; criado_em: string }[]
+  if (!lista.length) return
+  const agoraD = agora()
+  const agoraTxt = carimbo(agoraD)
+  const h = agoraD.getHours()
+  const horaBoa = h >= 8 && h < 21
+  const sel = `SELECT a.id, a.inicio, a.fim, a.criado_em, c.nome, c.telefone, s.nome AS servico, p.nome AS profissional, a.cliente_id
+               FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN servicos s ON s.id = a.servico_id JOIN profissionais p ON p.id = a.profissional_id
+               WHERE c.telefone NOT LIKE 'balcao-%' AND NOT EXISTS (SELECT 1 FROM automacao_envios x WHERE x.automacao_id = ? AND x.ref = a.id)`
+  type Ag = { id: string; inicio: string; fim: string; criado_em: string; nome: string; telefone: string; servico: string; profissional: string; cliente_id: string }
+  for (const au of lista) {
+    let alvos: Ag[] = []
+    if (au.gatilho === 'antes_horario') {
+      const ate = carimbo(somarMin(agoraD, au.valor * 60))
+      alvos = (db.prepare(`${sel} AND a.status = 'confirmado' AND a.inicio > ? AND a.inicio <= ?`).all(au.id, agoraTxt, ate) as Ag[])
+        .filter((a) => carimbo(somarMin(lerCarimbo(a.inicio), -au.valor * 60)) >= au.criado_em && a.criado_em <= carimbo(somarMin(lerCarimbo(a.inicio), -au.valor * 60)))
+    } else if (horaBoa) {
+      const min = au.gatilho === 'dias_depois' ? au.valor * 1440 : au.valor * 60
+      const vence = carimbo(somarMin(agoraD, -min))
+      alvos = (db.prepare(`${sel} AND a.status = 'concluido' AND a.fim <= ? AND a.fim > ?`).all(au.id, vence, carimbo(somarMin(agoraD, -min - 2 * 1440))) as Ag[])
+        .filter((a) => carimbo(somarMin(lerCarimbo(a.fim), min)) >= au.criado_em)
+      if (au.gatilho === 'primeira_visita') alvos = alvos.filter((a) =>
+        (db.prepare("SELECT COUNT(*) AS n FROM agendamentos WHERE cliente_id = ? AND status = 'concluido' AND inicio <= ?").get(a.cliente_id, a.inicio) as { n: number }).n === 1)
+    }
+    for (const a of alvos) {
+      db.prepare('INSERT OR IGNORE INTO automacao_envios (automacao_id, ref, enviado_em) VALUES (?, ?, ?)').run(au.id, a.id, agoraTxt)
+      const b = lerBarbearia(db)
+      const texto = preencher(au.texto, { barbearia: b.nome, endereco: b.endereco, cidade: (b.cidade ?? '').split(' - ')[0], link: config.urlApp, ...varsAgendamento(a) })
+      await enviarWhatsApp(db, a.telefone, 'automacao', texto)
+    }
   }
 }
 

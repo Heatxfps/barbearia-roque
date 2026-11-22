@@ -75,9 +75,9 @@ function Area({ usuario, sair }: { usuario: UsuarioPainel; sair: () => void }) {
     loja: <LojaPainel />,
     clientes: <Clientes />,
     avaliacoes: <Avaliacoes />,
-    mensagens: <Mensagens />,
+    mensagens: <Mensagens usuario={usuario} />,
     resultados: <Resultados />,
-    divulgacao: <Divulgacao />,
+    divulgacao: <Divulgacao usuario={usuario} />,
     ajustes: <Ajustes usuario={usuario} />,
   }
 

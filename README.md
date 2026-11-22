@@ -26,6 +26,8 @@ Aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, login 
 
 O painel é uma página própria: `painel.SEU-DOMINIO` na VPS, `localhost:3333/painel` no computador. Pode ser instalado no celular dos barbeiros ou num tablet do balcão como um app à parte ("Roque · Painel"). O app do cliente não tem botão nem código do painel.
 
+- **Mensagens:** canvas com a jornada do cliente (da marcação à volta); cada mensagem do WhatsApp tem texto editável com variáveis, tempo ajustável e liga/desliga, e dá para **criar mensagens automáticas novas** (antes do horário, depois do atendimento, dias depois, 1ª visita). Abas de *Próximas* (o que vai sair nos próximos 7 dias), *Enviadas* e *Falharam*
+- **Fotos:** ao escolher a foto de um barbeiro ou produto, abre um enquadramento (arrastar e zoom)
 - **Seções:** *Dia a dia* (Agenda, Loja) · *Clientes* (Clientes, Avaliações, Mensagens) · *Gestão* (Resultados, Divulgação, Ajustes). Menu lateral no computador; barra inferior + "Mais" no celular
 - **Quem vê o quê:** a equipe toda vê tudo, menos **Resultados** (financeiro), que é só do dono. Em Ajustes o barbeiro só troca a própria senha
 - **Segurança:** acesso expira em 12 h (ou 30 dias com "manter conectado neste aparelho"); barbeiro novo troca a senha no 1º acesso; o dono pode exigir um **código no WhatsApp** ao entrar

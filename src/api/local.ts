@@ -3,7 +3,8 @@
  * Imita a API guardando tudo no próprio celular, com dados de demonstração.
  * As regras são as mesmas do servidor (duração, intervalo, conflitos), em versão simplificada.
  */
-import type { Agendamento, Api, Barbearia, Bloqueio, Cliente, DadosBarbearia, ItemAgenda, Mensagem, Pedido, Produto, Servico, Status, UsuarioLista } from './tipos'
+import { MODELOS } from '../../shared/modelos'
+import type { Agendamento, Api, Automacao, ItemFila, ModeloMsg, Barbearia, Bloqueio, Cliente, DadosBarbearia, ItemAgenda, Mensagem, Pedido, Produto, Servico, Status, UsuarioLista } from './tipos'
 
 const p2 = (n: number) => String(n).padStart(2, '0')
 const dataIso = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
@@ -42,6 +43,8 @@ type Banco = {
   pedidos?: (Pedido & { clienteId: string; observacao: string })[]
   espera?: { id: string; clienteId: string; servicoId: string; profissionalId: string; data: string; criadoEm: string }[]
   avaliacoes?: { agendamentoId: string; nota: number; comentario: string; criadoEm: string }[]
+  modelos?: Record<string, { texto?: string | null; ativo?: boolean; valor?: number | null }>
+  automacoes?: Automacao[]
   agendamentos: Ag[]
   bloqueios: Omit<Bloqueio, 'profissional'>[]
   mensagens: Mensagem[]
@@ -126,7 +129,7 @@ const livres = (prof: string, data: string, dur: number) =>
 const OFFLINE = 'Na demonstração offline isso fica travado. Funciona na versão com servidor.'
 const dados = (): DadosBarbearia => ({
   nome: 'Barbearia Roque', cidade: 'Nova Venécia - ES', endereco: 'Endereço a confirmar · Nova Venécia - ES',
-  whatsapp: '5527999999999', instagram: 'barbearia_roque', dono: 'Luciano Roque', google_avaliacao: '', desconto_aniversario: 15, ...banco.info,
+  whatsapp: '5527999999999', instagram: 'barbearia_roque', dono: 'Luciano Roque', google_avaliacao: '', desconto_aniversario: 15, validade_aniversario: 30, ...banco.info,
 })
 const DONO: UsuarioLista = { id: 'dono', nome: 'Luciano Roque', email: 'dono@roque.local', papel: 'dono', profissionalId: null }
 const servico = (sid: string) => banco.servicos.find((s) => s.id === sid)!
@@ -149,9 +152,9 @@ export const apiLocal: Api = {
     await espera()
     const horarios: Barbearia['horarios'] = {}
     for (let d = 0; d < 7; d++) { const e = EXPEDIENTE[d]; horarios[d] = e ? [e[0], e[1]] : null }
-    const { dono, google_avaliacao, desconto_aniversario, ...info } = dados()
+    const { dono, google_avaliacao, desconto_aniversario, validade_aniversario, ...info } = dados()
     return {
-      ...info, dono: { nome: dono, foto: 'luciano-roque' }, googleAvaliacao: google_avaliacao, descontoAniversario: desconto_aniversario, horarios, fidelidadeMeta: META, diasAgenda: 14,
+      ...info, dono: { nome: dono, foto: 'luciano-roque' }, googleAvaliacao: google_avaliacao, descontoAniversario: desconto_aniversario, validadeAniversario: validade_aniversario, horarios, fidelidadeMeta: META, diasAgenda: 14,
       antecedenciaCancelarMin: 120, whatsappModo: 'offline', servicos: banco.servicos.filter((s) => s.ativo !== false), profissionais: PROFS,
     }
   },
@@ -357,6 +360,7 @@ ${c.nome} · ${sv.nome}
       const media = (ns: number[]) => (ns.length ? Math.round((ns.reduce((t, n) => t + n, 0) / ns.length) * 10) / 10 : 0)
       return {
         media: media(lista.map((x) => x.v.nota)), total: lista.length,
+        distribuicao: [5, 4, 3, 2, 1].map((nota) => ({ nota, n: lista.filter((x) => x.v.nota === nota).length })),
         porProfissional: PROFS.map((p) => { const ns = lista.filter((x) => x.a.profissionalId === p.id).map((x) => x.v.nota); return { id: p.id, nome: p.nome, foto: p.foto, media: media(ns), n: ns.length } }).filter((p) => p.n),
         recentes: lista.sort((x, y) => y.v.criadoEm.localeCompare(x.v.criadoEm)).slice(0, 30)
           .map((x) => ({ id: x.v.agendamentoId, nota: x.v.nota, comentario: x.v.comentario, criadoEm: x.v.criadoEm, cliente: cliente(x.a.clienteId)!.nome, profissional: nomeProf(x.a.profissionalId) })),
@@ -391,7 +395,40 @@ ${c.nome} · ${sv.nome}
         return { ...c, visitas: conc.length, faltas: ags.filter((a) => a.status === 'faltou').length, ultimaVisita: conc.map((a) => a.inicio).sort().pop() ?? null }
       }).sort((a, b) => (b.ultimaVisita ?? '').localeCompare(a.ultimaVisita ?? ''))
     },
-    async mensagens() { return banco.mensagens.slice(0, 60) },
+    async mensagens(status = 'todas') { return banco.mensagens.filter((m) => status === 'todas' || (status === 'falharam') === (m.status === 'erro')).slice(0, 100) },
+    async fila() {
+      // previsão simples dos lembretes (o modo offline não envia nada de verdade)
+      const agoraTxt = carimbo(new Date())
+      const ate = carimbo(new Date(Date.now() + 7 * 864e5))
+      const itens: ItemFila[] = []
+      for (const a of banco.agendamentos.filter((x) => x.status === 'confirmado' && x.inicio > agoraTxt && x.inicio <= ate)) {
+        const c = cliente(a.clienteId)!
+        if (c.telefone.startsWith('balcao')) continue
+        const resumo = `${servico(a.servicoId).nome} com ${nomeProf(a.profissionalId).split(' ')[0]}, ${a.inicio.slice(8, 10)}/${a.inicio.slice(5, 7)} às ${a.inicio.slice(11, 16)}`
+        const q24 = carimbo(new Date(ler(a.inicio).getTime() - 24 * 36e5)), q1 = carimbo(new Date(ler(a.inicio).getTime() - 36e5))
+        if (banco.modelos?.lembrete_24h?.ativo !== false) itens.push({ quando: q24 < agoraTxt ? agoraTxt : q24, tipo: 'lembrete_24h', nome: c.nome, telefone: c.telefone, resumo })
+        if (banco.modelos?.lembrete_1h?.ativo !== false) itens.push({ quando: q1 < agoraTxt ? agoraTxt : q1, tipo: 'lembrete_1h', nome: c.nome, telefone: c.telefone, resumo })
+      }
+      return itens.sort((x, y) => x.quando.localeCompare(y.quando)).slice(0, 150)
+    },
+    async modelos() {
+      return MODELOS.map((m): ModeloMsg => {
+        const o = banco.modelos?.[m.chave]
+        return { ...m, padrao: m.texto, texto: o?.texto ?? m.texto, ativo: o?.ativo ?? true, valor: o?.valor ?? m.tempo?.padrao ?? null, personalizado: !!o?.texto }
+      })
+    },
+    async salvarModelo(chave, d) {
+      const atual = banco.modelos?.[chave] ?? {}
+      banco.modelos = { ...banco.modelos, [chave]: { ...atual, ...d } }
+      salvar()
+    },
+    async automacoes() { return banco.automacoes ?? [] },
+    async salvarAutomacao(aid, d) {
+      const lista = banco.automacoes ?? []
+      banco.automacoes = aid ? lista.map((a) => (a.id === aid ? { ...a, ...d } : a)) : [...lista, { ...d, id: id() }]
+      salvar()
+    },
+    async removerAutomacao(aid) { banco.automacoes = (banco.automacoes ?? []).filter((a) => a.id !== aid); salvar() },
     async servicos() { return banco.servicos },
     async salvarServico(sid, s) {
       if (sid) banco.servicos = banco.servicos.map((x) => (x.id === sid ? { ...x, ...s } : x))

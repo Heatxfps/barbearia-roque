@@ -11,10 +11,12 @@ import { z } from 'zod'
 import { config, pastaFotos } from '../config.ts'
 import { enviarWhatsApp } from '../whatsapp.ts'
 import { textos } from '../textos.ts'
+import { listarModelos, montar, tempoDe } from '../mensagens.ts'
+import { GATILHOS, modeloPadrao } from '../../../shared/modelos.ts'
 import type { DB } from '../db.ts'
 import { conferirSenha, hashSenha, lerBarbearia, novoId, transacao } from '../db.ts'
 import { exigirAdmin, exigirDono, type Sessao } from '../auth.ts'
-import { agora, carimbo, dataIso, dataValida, horaValida, normalizarTelefone } from '../tempo.ts'
+import { agora, carimbo, dataIso, dataValida, horaValida, lerCarimbo, normalizarTelefone, somarMin } from '../tempo.ts'
 import { ErroNegocio, cancelarAgendamento, criarAgendamento } from '../servicos-agendamento.ts'
 import { clientesParaRetorno } from '../jobs.ts'
 
@@ -91,7 +93,71 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       return { ...resto, trocarSenha: !!trocar_senha, verificacaoWhatsApp: !!telefone }
     })
 
-    r.get('/mensagens', async () => db.prepare('SELECT id, telefone, tipo, texto, status, erro, criado_em AS criadoEm FROM mensagens ORDER BY criado_em DESC, rowid DESC LIMIT 60').all())
+    /** Histórico: enviadas (ou simuladas no modo demo) e as que falharam */
+    r.get('/mensagens', async (req) => {
+      const { status } = z.object({ status: z.enum(['todas', 'enviadas', 'falharam']).default('todas') }).parse(req.query)
+      const f = status === 'falharam' ? "WHERE status = 'erro'" : status === 'enviadas' ? "WHERE status != 'erro'" : ''
+      return db.prepare(`SELECT id, telefone, tipo, texto, status, erro, criado_em AS criadoEm FROM mensagens ${f} ORDER BY criado_em DESC, rowid DESC LIMIT 100`).all()
+    })
+
+    /** O que o app vai mandar nos próximos 7 dias (previsão, pode mudar se o cliente remarcar) */
+    r.get('/mensagens/fila', async () => {
+      const agoraD = agora()
+      const agoraTxt = carimbo(agoraD)
+      const ate = carimbo(somarMin(agoraD, 7 * 1440))
+      type Item = { quando: string; tipo: string; nome: string; telefone: string; resumo: string }
+      const fila: Item[] = []
+      const ligado = (chave: string) => (db.prepare('SELECT ativo FROM modelos WHERE chave = ?').get(chave) as { ativo: number } | undefined)?.ativo !== 0
+      const ags = db.prepare(`SELECT a.id, a.inicio, a.fim, a.criado_em, a.lembrete_24h, a.lembrete_1h, c.nome, c.telefone, s.nome AS servico, p.nome AS profissional
+                              FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN servicos s ON s.id = a.servico_id JOIN profissionais p ON p.id = a.profissional_id
+                              WHERE a.status = 'confirmado' AND a.inicio > ? AND a.inicio <= ? AND c.telefone NOT LIKE 'balcao-%'`).all(agoraTxt, ate) as
+        { id: string; inicio: string; criado_em: string; lembrete_24h: number; lembrete_1h: number; nome: string; telefone: string; servico: string; profissional: string }[]
+      const h24 = tempoDe(db, 'lembrete_24h') * 60, h1 = tempoDe(db, 'lembrete_1h') * 60
+      for (const a of ags) {
+        const resumo = `${a.servico} com ${a.profissional.split(' ')[0]}, ${a.inicio.slice(8, 10)}/${a.inicio.slice(5, 7)} às ${a.inicio.slice(11, 16)}`
+        const q24 = carimbo(somarMin(lerCarimbo(a.inicio), -h24))
+        if (ligado('lembrete_24h') && !a.lembrete_24h && a.criado_em <= q24) fila.push({ quando: q24 < agoraTxt ? agoraTxt : q24, tipo: 'lembrete_24h', nome: a.nome, telefone: a.telefone, resumo })
+        const q1 = carimbo(somarMin(lerCarimbo(a.inicio), -h1))
+        if (ligado('lembrete_1h') && !a.lembrete_1h && a.criado_em <= carimbo(somarMin(lerCarimbo(a.inicio), -(h1 + 30)))) fila.push({ quando: q1 < agoraTxt ? agoraTxt : q1, tipo: 'lembrete_1h', nome: a.nome, telefone: a.telefone, resumo })
+      }
+      // automações "antes do horário"
+      for (const au of db.prepare("SELECT id, nome, valor FROM automacoes WHERE ativo = 1 AND gatilho = 'antes_horario'").all() as { id: string; nome: string; valor: number }[])
+        for (const a of ags) {
+          const q = carimbo(somarMin(lerCarimbo(a.inicio), -au.valor * 60))
+          if (q > agoraTxt && a.criado_em <= q && !db.prepare('SELECT 1 FROM automacao_envios WHERE automacao_id = ? AND ref = ?').get(au.id, a.id))
+            fila.push({ quando: q, tipo: 'automacao', nome: a.nome, telefone: a.telefone, resumo: au.nome })
+        }
+      // avaliação de quem já foi atendido
+      if (ligado('avaliacao')) {
+        const hv = tempoDe(db, 'avaliacao') * 60
+        for (const a of db.prepare(`SELECT a.fim, c.nome, c.telefone, p.nome AS profissional FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN profissionais p ON p.id = a.profissional_id
+                                    WHERE a.status = 'concluido' AND a.avaliacao_enviada = 0 AND a.fim > ? AND c.telefone NOT LIKE 'balcao-%'
+                                      AND NOT EXISTS (SELECT 1 FROM avaliacoes v WHERE v.agendamento_id = a.id)`).all(carimbo(somarMin(agoraD, -48 * 60))) as { fim: string; nome: string; telefone: string; profissional: string }[]) {
+          const q = carimbo(somarMin(lerCarimbo(a.fim), hv))
+          fila.push({ quando: q < agoraTxt ? agoraTxt : q, tipo: 'avaliacao', nome: a.nome, telefone: a.telefone, resumo: `atendimento com ${a.profissional.split(' ')[0]}` })
+        }
+      }
+      // aniversários da semana
+      const b = lerBarbearia(db)
+      if (ligado('aniversario') && Number(b.desconto_aniversario ?? 15) > 0) {
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(agoraD); d.setDate(d.getDate() + i); d.setHours(9, 0, 0, 0)
+          for (const c of db.prepare('SELECT nome, telefone, aniversario_ano FROM clientes WHERE aniversario = ?').all(dataIso(d).slice(5)) as { nome: string; telefone: string; aniversario_ano: number | null }[])
+            if ((c.aniversario_ano ?? 0) < d.getFullYear()) fila.push({ quando: carimbo(d < agoraD ? agoraD : d), tipo: 'aniversario', nome: c.nome, telefone: c.telefone, resumo: `cupom de ${b.desconto_aniversario ?? 15}%` })
+        }
+      }
+      // volte a cortar (próxima janela das 10h às 19h)
+      if (ligado('retorno')) {
+        const jan = new Date(agoraD)
+        if (jan.getHours() >= 19) { jan.setDate(jan.getDate() + 1); jan.setHours(10, 0, 0, 0) } else if (jan.getHours() < 10) jan.setHours(10, 0, 0, 0)
+        for (const c of clientesParaRetorno(db).filter((c) => !c.avisado)) fila.push({ quando: carimbo(jan), tipo: 'retorno', nome: c.nome, telefone: c.telefone, resumo: `${c.dias} dias sem vir` })
+      }
+      return fila.sort((x, y) => x.quando.localeCompare(y.quando)).slice(0, 150)
+    })
+
+    /** Modelos das mensagens e automações (a equipe vê; só o dono edita) */
+    r.get('/modelos', async () => listarModelos(db))
+    r.get('/automacoes', async () => (db.prepare('SELECT * FROM automacoes ORDER BY criado_em').all() as { ativo: number }[]).map((a) => ({ ...a, ativo: !!a.ativo })))
 
     /** Clientes sumidos (para chamar de volta): todos da equipe podem ver */
     r.get('/retorno', async () => clientesParaRetorno(db).slice(0, 50))
@@ -261,7 +327,9 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       const recentes = db.prepare(`SELECT v.id, v.nota, v.comentario, v.criado_em AS criadoEm, c.nome AS cliente, p.nome AS profissional
                                    FROM avaliacoes v JOIN clientes c ON c.id = v.cliente_id JOIN profissionais p ON p.id = v.profissional_id
                                    ${f} ORDER BY v.criado_em DESC LIMIT 60`).all(...args)
-      return { media: geral.media ?? 0, total: geral.total, porProfissional, recentes }
+      const dist = db.prepare(`SELECT nota, COUNT(*) AS n FROM avaliacoes v ${f} GROUP BY nota`).all(...args) as { nota: number; n: number }[]
+      const distribuicao = [5, 4, 3, 2, 1].map((nota) => ({ nota, n: dist.find((d) => d.nota === nota)?.n ?? 0 }))
+      return { media: geral.media ?? 0, total: geral.total, porProfissional, recentes, distribuicao }
     })
 
     // ---------- loja: pedidos (todos atendem o balcão) ----------
@@ -280,7 +348,8 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
         { status: string; nome: string; telefone: string } | undefined
       if (!o) throw new ErroNegocio('Pedido não encontrado', 404)
       db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(status, id)
-      if (status === 'separado' && o.status === 'novo') void enviarWhatsApp(db, o.telefone, 'pedido_separado', textos.pedidoSeparado(o.nome, lerBarbearia(db).nome))
+      const txt = status === 'separado' && o.status === 'novo' ? montar(db, 'pedido_separado', { nome: o.nome.split(' ')[0] }) : null
+      if (txt) void enviarWhatsApp(db, o.telefone, 'pedido_separado', txt)
       return { ok: true }
     })
 
@@ -288,6 +357,50 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
     // ---------- só o dono ----------
     r.register(async (d) => {
       d.addHook('onRequest', exigirDono)
+
+      d.put('/modelos/:chave', async (req) => {
+        const { chave } = z.object({ chave: z.string() }).parse(req.params)
+        const p = modeloPadrao(chave)
+        if (!p) throw new ErroNegocio('Mensagem não encontrada', 404)
+        const b = z.object({ texto: z.string().trim().min(5).max(1000).nullable().optional(), ativo: z.boolean().optional(), valor: z.number().int().nullable().optional() }).parse(req.body)
+        if (b.valor != null && p.tempo && (b.valor < p.tempo.min || b.valor > p.tempo.max)) throw new ErroNegocio(`O tempo precisa ficar entre ${p.tempo.min} e ${p.tempo.max} ${p.tempo.unidade}`)
+        const atual = db.prepare('SELECT texto, ativo, valor FROM modelos WHERE chave = ?').get(chave) as { texto: string | null; ativo: number; valor: number | null } | undefined
+        const novo = {
+          texto: b.texto === undefined ? atual?.texto ?? null : b.texto === p.texto ? null : b.texto,
+          ativo: b.ativo === undefined ? atual?.ativo ?? 1 : +b.ativo,
+          valor: b.valor === undefined ? atual?.valor ?? null : b.valor,
+        }
+        db.prepare(`INSERT INTO modelos (chave, texto, ativo, valor) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(chave) DO UPDATE SET texto = excluded.texto, ativo = excluded.ativo, valor = excluded.valor`).run(chave, novo.texto, novo.ativo, novo.valor)
+        return { ok: true }
+      })
+
+      const automacaoSchema = z.object({
+        nome: z.string().trim().min(2).max(60),
+        gatilho: z.enum(['antes_horario', 'depois_atendimento', 'dias_depois', 'primeira_visita']),
+        valor: z.number().int(),
+        texto: z.string().trim().min(5).max(1000),
+        ativo: z.boolean().default(true),
+      }).refine((a) => a.valor >= GATILHOS[a.gatilho].min && a.valor <= GATILHOS[a.gatilho].max, { message: 'Tempo fora do limite' })
+      d.post('/automacoes', async (req, reply) => {
+        const b = automacaoSchema.parse(req.body)
+        const id = 'au-' + novoId().slice(0, 8)
+        db.prepare('INSERT INTO automacoes (id, nome, gatilho, valor, texto, ativo, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, b.nome, b.gatilho, b.valor, b.texto, +b.ativo, carimbo(agora()))
+        return reply.status(201).send({ id })
+      })
+      d.put('/automacoes/:id', async (req) => {
+        const { id } = z.object({ id: z.string() }).parse(req.params)
+        const b = automacaoSchema.parse(req.body)
+        const r2 = db.prepare('UPDATE automacoes SET nome = ?, gatilho = ?, valor = ?, texto = ?, ativo = ? WHERE id = ?').run(b.nome, b.gatilho, b.valor, b.texto, +b.ativo, id)
+        if (!r2.changes) throw new ErroNegocio('Automação não encontrada', 404)
+        return { ok: true }
+      })
+      d.delete('/automacoes/:id', async (req) => {
+        const { id } = z.object({ id: z.string() }).parse(req.params)
+        db.prepare('DELETE FROM automacao_envios WHERE automacao_id = ?').run(id)
+        db.prepare('DELETE FROM automacoes WHERE id = ?').run(id)
+        return { ok: true }
+      })
 
 
       /** WhatsApp do dono para o código de entrada (pede a senha atual para mudar) */
@@ -433,6 +546,7 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
           instagram: z.string().transform((t) => t.replace(/^@/, '').trim()), dono: z.string(),
           google_avaliacao: z.string().trim().refine((u) => !u || /^https:\/\//.test(u), 'Cole o link completo, começando com https://'),
           desconto_aniversario: z.number().int().min(0).max(100).transform(String),
+          validade_aniversario: z.number().int().min(0).max(60).transform(String),
         }).partial().parse(req.body)
         for (const [k, v] of Object.entries(b)) db.prepare('INSERT INTO barbearia (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor').run(k, String(v))
         return lerBarbearia(db)

@@ -5,7 +5,7 @@ import { escolherProfissional, fimDoServico, horariosDoProfissional } from './ag
 import { config } from './config.ts'
 import { agora, carimbo, dataIso, somarMin } from './tempo.ts'
 import { enviarWhatsApp, type TipoMensagem } from './whatsapp.ts'
-import { textos } from './textos.ts'
+import { montar, varsAgendamento } from './mensagens.ts'
 
 export class ErroNegocio extends Error {
   status: number
@@ -88,13 +88,8 @@ export function detalhe(db: DB, id: string): Detalhe | undefined {
 export async function notificar(db: DB, id: string, tipo: 'confirmacao' | 'cancelamento' | 'lembrete_24h' | 'lembrete_1h') {
   const d = detalhe(db, id)
   if (!d) return
-  const b = lerBarbearia(db)
-  const info = { ...d, barbearia: b.nome, endereco: b.endereco }
-  const texto = tipo === 'confirmacao' ? textos.confirmacao(info)
-    : tipo === 'cancelamento' ? textos.cancelamento(info)
-    : tipo === 'lembrete_24h' ? textos.lembrete24h(info)
-    : textos.lembrete1h(info)
-  await enviarWhatsApp(db, d.telefone, tipo, texto)
+  const texto = montar(db, tipo, varsAgendamento(d))
+  if (texto) await enviarWhatsApp(db, d.telefone, tipo, texto)
 }
 
 /** Avisa o WhatsApp da própria barbearia quando o cliente marca ou cancela pelo app,
@@ -102,8 +97,9 @@ export async function notificar(db: DB, id: string, tipo: 'confirmacao' | 'cance
 export async function avisarBarbearia(db: DB, id: string, tipo: 'novo' | 'cancelou') {
   const d = detalhe(db, id)
   if (!d) return
-  const info = { ...d, barbearia: lerBarbearia(db).nome }
-  await avisarBarbeariaTexto(db, tipo === 'novo' ? 'aviso_novo' : 'aviso_cancelou', tipo === 'novo' ? textos.avisoNovo(info) : textos.avisoCancelou(info))
+  const chave = tipo === 'novo' ? 'aviso_novo' : 'aviso_cancelou'
+  const texto = montar(db, chave, { ...varsAgendamento(d), nome: d.nome }) // para a equipe: nome completo
+  if (texto) await avisarBarbeariaTexto(db, chave, texto)
 }
 
 /** Manda um texto para o WhatsApp da própria barbearia (se o número estiver configurado). */

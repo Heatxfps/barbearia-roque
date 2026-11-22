@@ -322,3 +322,47 @@ test('dono com WhatsApp cadastrado entra só com o código', async () => {
   // desliga de novo para não atrapalhar os outros testes
   assert.equal((await req('PUT', '/api/admin/seguranca', { senha: 'senha-teste', telefone: null }, ok.json.token)).status, 200)
 })
+
+test('mensagens: texto editado, mensagem desligada e automação nova', async () => {
+  relogio = new Date(2030, 2, 4, 8, 0)
+  const dono = await loginDono()
+  // texto personalizado da confirmação
+  assert.equal((await req('PUT', '/api/admin/modelos/confirmacao', { texto: 'Valeu, {nome}! {servico} às {hora}.' }, dono)).status, 200)
+  // lembrete da véspera desligado
+  assert.equal((await req('PUT', '/api/admin/modelos/lembrete_24h', { ativo: false }, dono)).status, 200)
+  // tempo fora do limite é recusado
+  assert.equal((await req('PUT', '/api/admin/modelos/retorno', { valor: 500 }, dono)).status, 400)
+  // automação: 3 h antes do horário
+  const au = await req('POST', '/api/admin/automacoes', { nome: 'Dica antes', gatilho: 'antes_horario', valor: 3, texto: '{nome}, chegue 5 min antes 😉' }, dono)
+  assert.equal(au.status, 201)
+
+  const t = await loginCliente('27996660009', 'Gabriel Mensagens')
+  const D = '2030-03-08' // sexta
+  const a = await req('POST', '/api/me/agendamentos', { servicoId: 'corte', profissionalId: 'p1', data: D, hora: '15:00' }, t)
+  assert.equal(a.status, 201)
+  await new Promise((r) => setTimeout(r, 20))
+  const msgs = (await req('GET', '/api/admin/mensagens', undefined, dono)).json as { tipo: string; telefone: string; texto: string }[]
+  assert.ok(msgs.some((m) => m.tipo === 'confirmacao' && m.texto === 'Valeu, Gabriel! Corte às 15:00.'))
+
+  const fila = (await req('GET', '/api/admin/mensagens/fila', undefined, dono)).json as { tipo: string; telefone: string; quando: string }[]
+  const doCliente = fila.filter((f) => f.telefone === '5527996660009')
+  assert.ok(doCliente.some((f) => f.tipo === 'automacao' && f.quando === `${D} 12:00`))
+  assert.ok(!doCliente.some((f) => f.tipo === 'lembrete_24h')) // desligado
+  assert.ok(doCliente.some((f) => f.tipo === 'lembrete_1h'))
+
+  relogio = new Date(2030, 2, 7, 15, 0)   // véspera: lembrete desligado não sai
+  await rodarTarefas(db)
+  relogio = new Date(2030, 2, 8, 12, 5)   // 3 h antes: sai a automação
+  await rodarTarefas(db)
+  await rodarTarefas(db)
+  const depois = ((await req('GET', '/api/admin/mensagens', undefined, dono)).json as { tipo: string; telefone: string; texto: string }[]).filter((m) => m.telefone === '5527996660009')
+  assert.equal(depois.filter((m) => m.tipo === 'automacao').length, 1)
+  assert.ok(depois.find((m) => m.tipo === 'automacao')!.texto.startsWith('Gabriel, chegue'))
+  assert.equal(depois.filter((m) => m.tipo === 'lembrete_24h').length, 0)
+
+  // volta ao padrão para não afetar outros testes
+  await req('PUT', '/api/admin/modelos/confirmacao', { texto: null }, dono)
+  await req('PUT', '/api/admin/modelos/lembrete_24h', { ativo: true }, dono)
+  await req('DELETE', `/api/admin/automacoes/${au.json.id}`, undefined, dono)
+  relogio = new Date(2030, 2, 4, 8, 0)
+})

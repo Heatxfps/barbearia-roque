@@ -18,7 +18,7 @@ if (n > 0 && !limpar) {
   console.log('O banco já tem agendamentos. Use --limpar para recriar os dados de demonstração.')
   process.exit(0)
 }
-if (limpar) db.exec(`DELETE FROM avaliacoes; DELETE FROM cupons; DELETE FROM espera; DELETE FROM pedido_itens; DELETE FROM pedidos;
+if (limpar) db.exec(`DELETE FROM automacao_envios; DELETE FROM avaliacoes; DELETE FROM cupons; DELETE FROM espera; DELETE FROM pedido_itens; DELETE FROM pedidos;
                      DELETE FROM agendamentos; DELETE FROM clientes; DELETE FROM mensagens; DELETE FROM codigos; DELETE FROM bloqueios;`)
 
 // gerador pseudoaleatório fixo (sempre os mesmos dados)
@@ -44,8 +44,9 @@ const clientes = nomes.map((nome, i) => {
   return id
 })
 
+// horários passados: lembretes já "enviados"; futuros: pendentes (aparecem em Mensagens → Próximas)
 const ins = db.prepare(`INSERT INTO agendamentos (id, cliente_id, profissional_id, servico_id, inicio, fim, preco, status, origem, criado_em, lembrete_24h, lembrete_1h)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)`)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 
 const hojeReal = agora()
 const hoje0 = new Date(hojeReal); hoje0.setHours(0, 0, 0, 0)
@@ -70,7 +71,7 @@ for (let d = -45; d <= 6; d++) {
       const inicio = `${data} ${hora}`
       const status = d < 0 ? (rnd() < 0.05 ? 'faltou' : rnd() < 0.04 ? 'cancelado' : 'concluido') : d === 0 && inicio < carimbo(hojeReal) ? 'concluido' : 'confirmado'
       ins.run(novoId(), cliente, prof, s.id, inicio, fimDoServico(data, hora, s.duracao), s.preco, status, rnd() < 0.68 ? 'app' : 'balcao',
-        carimbo(somarMin(dia, -3 * 1440)))
+        carimbo(somarMin(dia, -3 * 1440)), d > 0 ? 0 : 1, d > 0 ? 0 : 1)
       total++
     }
   }

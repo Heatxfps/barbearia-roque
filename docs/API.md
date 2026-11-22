@@ -66,6 +66,11 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 | DELETE | `/admin/usuarios/:id` | dono | Remove o acesso de um barbeiro |
 | PUT | `/admin/senha` `{ atual, nova }` | todos | Troca a própria senha (mínimo 8) e devolve um token novo. Barbeiro novo é obrigado a fazer isso no 1º acesso (antes disso só `/eu` e `/senha` respondem) |
 | PUT | `/admin/seguranca` `{ senha, telefone \| null }` | dono | Liga/desliga o código no WhatsApp para entrar como dono |
+| GET | `/admin/mensagens?status=todas\|enviadas\|falharam` | todos | Histórico das mensagens |
+| GET | `/admin/mensagens/fila` | todos | Previsão do que sai nos próximos 7 dias |
+| GET | `/admin/modelos` | todos | Mensagens automáticas: texto atual, texto padrão, variáveis, tempo, ligada |
+| PUT | `/admin/modelos/:chave` `{ texto?, ativo?, valor? }` | dono | Edita a mensagem (`texto: null` volta ao padrão) |
+| GET/POST/PUT/DELETE | `/admin/automacoes[/:id]` `{ nome, gatilho, valor, texto, ativo }` | dono (ler: todos) | Mensagens automáticas criadas pelo dono. Gatilhos: `antes_horario` (h), `depois_atendimento` (h), `dias_depois` (dias), `primeira_visita` (h) |
 | GET | `/admin/avaliacoes` | todos | Média, por barbeiro e últimos comentários |
 | DELETE | `/admin/espera/:id` | todos | Tira alguém da lista de espera (a agenda do dia traz `espera`) |
 | GET/PATCH | `/admin/pedidos[/:id]` `{ status }` | todos | Pedidos da loja: `novo`, `separado` (avisa o cliente), `retirado`, `cancelado` |

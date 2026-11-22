@@ -81,3 +81,7 @@ Uma mesma VPS pode atender várias barbearias (um container por cliente).
 - **Lista de espera** para horários cancelados
 - **Avaliação** pós-atendimento que leva ao Google Maps
 - Publicação nas lojas com Capacitor (Play Store: US$ 25 uma vez; App Store: US$ 99/ano)
+
+## Mensagens do WhatsApp
+
+Os textos padrão, as variáveis (`{nome}`, `{hora}`…) e os tempos de cada mensagem ficam em [`shared/modelos.ts`](../shared/modelos.ts), usado pelo servidor (para enviar) e pelo painel (para editar e pré-visualizar). O que o dono muda fica na tabela `modelos`; sem linha, vale o texto padrão. As mensagens automáticas criadas pelo dono ficam em `automacoes` (e `automacao_envios` garante uma vez por atendimento; nunca dispara para atendimentos anteriores à criação). Os códigos de acesso (`server/src/textos.ts`) não são editáveis, por segurança.
