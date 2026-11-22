@@ -1,66 +1,95 @@
 /**
  * Mensagens do WhatsApp.
- * - Fluxo: a jornada do cliente como um canvas; cada cartão é uma mensagem (editar texto, tempo, ligar/desligar).
+ * - Fluxo: um canvas por raia (Cliente, Loja, Equipe); cada cartão é uma mensagem (editar texto, tempo, ligar/desligar).
  *   Nas etapas "antes" e "depois" do atendimento dá para criar mensagens automáticas novas.
- * - Próximas: o que o app vai mandar nos próximos 7 dias.
- * - Enviadas / Falharam: histórico.
+ * - Enviadas / Falharam: histórico. (A situação de cada lembrete por cliente fica em Clientes.)
  * A equipe toda vê; só o dono edita.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icone from '../../components/Icone'
-import { api, type Automacao, type ItemFila, type Mensagem, type ModeloMsg, type UsuarioPainel } from '../../api'
+import { api, type Automacao, type Mensagem, type ModeloMsg, type UsuarioPainel } from '../../api'
 import { useApp } from '../../contexto'
-import { dataCurta, dataLonga, formatarTelefone, hora } from '../../util'
-import { GATILHOS, VARIAVEIS, VARIAVEIS_AUTOMACAO, exemplo, type Gatilho } from '../../../shared/modelos'
+import { dataCurta, formatarTelefone, hora } from '../../util'
+import { GATILHOS, VARIAVEIS, VARIAVEIS_AUTOMACAO, exemplo, type Gatilho, type Grupo, type Raia } from '../../../shared/modelos'
 
-type Aba = 'fluxo' | 'proximas' | 'enviadas' | 'falharam'
+type Aba = 'fluxo' | 'enviadas' | 'falharam'
 
 export const TIPO: Record<string, string> = {
   codigo: 'Código de acesso', codigo_painel: 'Código do painel', confirmacao: 'Confirmação', lembrete_24h: 'Lembrete da véspera', lembrete_1h: 'Lembrete em cima da hora',
   cancelamento: 'Cancelamento', retorno: 'Volte a cortar', avaliacao: 'Avaliação', aniversario: 'Aniversário', espera: 'Lista de espera',
   pedido: 'Pedido', pedido_separado: 'Pedido separado', aviso_novo: 'Aviso: novo horário', aviso_cancelou: 'Aviso: cancelamento', aviso_pedido: 'Aviso: pedido',
-  automacao: 'Automação',
+  automacao: 'Automação', cancelamento_casa: 'Barbearia desmarcou', adiantar: 'Pode adiantar', faltou: 'Sentimos sua falta',
+  cupom_vencendo: 'Cupom vencendo', pedido_parado: 'Lembrete de retirada', aviso_adiantou: 'Aviso: adiantou', aviso_avaliacao: 'Aviso: avaliação baixa',
+  lembrete_manual: 'Lembrete (manual)',
 }
 
 export default function Mensagens({ usuario }: { usuario: UsuarioPainel }) {
   const [aba, setAba] = useState<Aba>('fluxo')
-  const abas: [Aba, string][] = [['fluxo', 'Fluxo'], ['proximas', 'Próximas'], ['enviadas', 'Enviadas'], ['falharam', 'Falharam']]
+  const abas: [Aba, string][] = [['fluxo', 'Fluxo'], ['enviadas', 'Enviadas'], ['falharam', 'Falharam']]
   return (
     <div className="painel__col">
       <div className="filtros">
         {abas.map(([id, rot]) => <button key={id} className={aba === id ? 'ativo' : ''} onClick={() => setAba(id)}>{rot}</button>)}
       </div>
       {aba === 'fluxo' && <Fluxo dono={usuario.papel === 'dono'} />}
-      {aba === 'proximas' && <Proximas />}
       {(aba === 'enviadas' || aba === 'falharam') && <Historico status={aba} />}
     </div>
   )
 }
 
-/* ====================== FLUXO (canvas) ====================== */
+/* ====================== FLUXO (canvas em raias) ====================== */
 type No =
   | { tipo: 'modelo'; m: ModeloMsg }
   | { tipo: 'auto'; a: Automacao }
 
-const ETAPAS: { id: string; titulo: string; sub: string; criar?: Gatilho[] }[] = [
-  { id: 'agendamento', titulo: 'Quando marca', sub: 'na hora' },
-  { id: 'antes', titulo: 'Antes do horário', sub: 'lembretes', criar: ['antes_horario'] },
-  { id: 'atendimento', titulo: 'Atendimento', sub: 'o barbeiro marca "concluído"' },
-  { id: 'depois', titulo: 'Depois do atendimento', sub: 'relacionamento', criar: ['depois_atendimento', 'dias_depois', 'primeira_visita'] },
-  { id: 'especiais', titulo: 'Datas e avisos', sub: 'quando acontece' },
-  { id: 'loja', titulo: 'Loja', sub: 'pedidos' },
+type Etapa = { id: string; titulo: string; sub: string; grupo?: Grupo; chaves?: string[]; criar?: Gatilho[]; centro?: boolean }
+type DefRaia = { id: Raia; titulo: string; icone: 'perfil' | 'sacola' | 'whats'; sub: string; quem: string; etapas: Etapa[]; sequencia: boolean }
+
+const RAIAS: DefRaia[] = [
+  {
+    id: 'cliente', titulo: 'Cliente', icone: 'perfil', sequencia: true, quem: 'vai para o WhatsApp do cliente',
+    sub: 'A jornada de quem corta: da marcação até a próxima visita.',
+    etapas: [
+      { id: 'marcou', grupo: 'marcou', titulo: 'Marcou', sub: 'na hora em que acontece' },
+      { id: 'antes', grupo: 'antes', titulo: 'Antes do horário', sub: 'lembretes', criar: ['antes_horario'] },
+      { id: 'no_dia', grupo: 'no_dia', titulo: 'No dia', sub: 'fila e imprevistos' },
+      { id: 'cadeira', titulo: 'Na cadeira', sub: 'o barbeiro marca "concluído"', centro: true },
+      { id: 'depois', grupo: 'depois', titulo: 'Depois', sub: 'relacionamento', criar: ['depois_atendimento', 'dias_depois', 'primeira_visita'] },
+      { id: 'voltar', grupo: 'voltar', titulo: 'Para voltar', sub: 'saudade e datas especiais' },
+    ],
+  },
+  {
+    id: 'loja', titulo: 'Loja', icone: 'sacola', sequencia: true, quem: 'vai para o WhatsApp do cliente',
+    sub: 'Pedidos de produtos com retirada na barbearia.',
+    etapas: [
+      { id: 'pedido', chaves: ['pedido'], titulo: 'Pediu', sub: 'reservou no app' },
+      { id: 'separado', chaves: ['pedido_separado'], titulo: 'Separado', sub: 'a equipe marca no painel' },
+      { id: 'parado', chaves: ['pedido_parado'], titulo: 'Não retirou', sub: 'lembrete' },
+    ],
+  },
+  {
+    id: 'equipe', titulo: 'Equipe', icone: 'whats', sequencia: false, quem: 'vai para o WhatsApp da barbearia',
+    sub: 'Avisos para quem está no balcão, sem precisar abrir o painel.',
+    etapas: [
+      { id: 'agenda', chaves: ['aviso_novo', 'aviso_cancelou', 'aviso_adiantou'], titulo: 'Agenda', sub: 'mudou algo pelo app' },
+      { id: 'loja', chaves: ['aviso_pedido'], titulo: 'Loja', sub: 'pedido para separar' },
+      { id: 'avaliacoes', chaves: ['aviso_avaliacao'], titulo: 'Avaliações', sub: 'cliente insatisfeito' },
+    ],
+  },
 ]
 
 function minutosDe(n: No): number {
-  if (n.tipo === 'auto') { const g = GATILHOS[n.a.gatilho]; return (g.unidade === 'dias' ? n.a.valor * 1440 : n.a.valor * 60) }
+  const em = (v: number, u: string) => (u === 'dias' ? v * 1440 : u === 'minutos' ? v : v * 60)
+  if (n.tipo === 'auto') { const g = GATILHOS[n.a.gatilho]; return em(n.a.valor, g.unidade) }
   const t = n.m.tempo
-  return t ? (t.unidade === 'dias' ? (n.m.valor ?? t.padrao) * 1440 : (n.m.valor ?? t.padrao) * 60) : 0
+  return t ? em(n.m.valor ?? t.padrao, t.unidade) : 0
 }
 
 function Fluxo({ dono }: { dono: boolean }) {
   const { avisar } = useApp()
   const [modelos, setModelos] = useState<ModeloMsg[] | null>(null)
   const [autos, setAutos] = useState<Automacao[]>([])
+  const [raia, setRaia] = useState<Raia>('cliente')
   const [aberto, setAberto] = useState<No | { tipo: 'nova'; gatilho: Gatilho } | null>(null)
 
   const carregar = useCallback(() => {
@@ -69,45 +98,75 @@ function Fluxo({ dono }: { dono: boolean }) {
   }, [avisar])
   useEffect(() => { carregar() }, [carregar])
 
-  const porEtapa = useMemo(() => {
+  // nós de cada etapa de cada raia
+  const nos = useMemo(() => {
     const mapa: Record<string, No[]> = {}
-    for (const m of modelos ?? []) {
-      if (m.grupo === 'divulgacao') continue
-      const etapa = m.grupo === 'barbearia' ? (m.chave === 'aviso_pedido' ? 'loja' : 'agendamento') : m.grupo
-      ;(mapa[etapa] ??= []).push({ tipo: 'modelo', m })
+    for (const r of RAIAS) for (const e of r.etapas) {
+      const lista: No[] = (modelos ?? []).filter((m) => (e.chaves ? e.chaves.includes(m.chave) : m.grupo === e.grupo)).map((m) => ({ tipo: 'modelo', m }))
+      if (e.grupo) for (const a of autos) if (GATILHOS[a.gatilho].grupo === e.grupo) lista.push({ tipo: 'auto', a })
+      // antes: do mais cedo para o mais perto; depois: do mais perto para o mais longe
+      if (e.grupo === 'antes') lista.sort((x, y) => minutosDe(y) - minutosDe(x))
+      if (e.grupo === 'depois') lista.sort((x, y) => minutosDe(x) - minutosDe(y))
+      mapa[`${r.id}:${e.id}`] = lista
     }
-    for (const a of autos) (mapa[GATILHOS[a.gatilho].grupo] ??= []).push({ tipo: 'auto', a })
-    // antes: do mais cedo para o mais perto; depois: do mais perto para o mais longe
-    mapa.antes?.sort((x, y) => minutosDe(y) - minutosDe(x))
-    mapa.depois?.sort((x, y) => minutosDe(x) - minutosDe(y))
     return mapa
   }, [modelos, autos])
 
   if (!modelos) return <div className="cartao cartao--esqueleto" />
 
+  const contar = (r: DefRaia) => {
+    const todos = r.etapas.flatMap((e) => nos[`${r.id}:${e.id}`] ?? [])
+    return { total: todos.length, ligadas: todos.filter((n) => (n.tipo === 'modelo' ? n.m.ativo : n.a.ativo)).length }
+  }
+  const atual = RAIAS.find((r) => r.id === raia)!
+  const n = contar(atual)
+
   return (
     <>
-      <p className="suave pequeno">A jornada do cliente, da marcação até a volta. Toque numa mensagem para {dono ? 'editar o texto, o tempo ou desligar' : 'ver o texto'}.</p>
-      <div className="fluxo" role="list">
-        {ETAPAS.map((e, i) => (
-          <section key={e.id} className={`fluxo__etapa ${e.id === 'atendimento' ? 'fluxo__etapa--centro' : ''}`} role="listitem">
-            <header className="fluxo__cabeca">
-              <span className="fluxo__num">{i + 1}</span>
-              <div><strong>{e.titulo}</strong><span className="suave pequeno">{e.sub}</span></div>
-            </header>
-            {e.id === 'atendimento' ? (
-              <div className="fluxo__atendimento"><Icone nome="tesoura" tam={28} /><span>Cliente na cadeira</span></div>
-            ) : (
-              <div className="fluxo__nos">
-                {(porEtapa[e.id] ?? []).map((n) => <CartaoNo key={n.tipo === 'modelo' ? n.m.chave : n.a.id} no={n} abrir={() => setAberto(n)} />)}
-                {dono && e.criar && (
-                  <button className="fluxo__novo" onClick={() => setAberto({ tipo: 'nova', gatilho: e.criar![0] })}><Icone nome="mais" tam={16} /> Nova mensagem</button>
-                )}
-              </div>
-            )}
-          </section>
-        ))}
+      <div className="raias-seletor" role="tablist" aria-label="Para quem vai">
+        {RAIAS.map((r) => {
+          const c = contar(r)
+          return (
+            <button key={r.id} role="tab" aria-selected={raia === r.id} className={`raia-botao ${raia === r.id ? 'ativo' : ''}`} onClick={() => setRaia(r.id)}>
+              <Icone nome={r.icone} tam={18} />
+              <span><strong>{r.titulo}</strong><small>{c.ligadas} de {c.total} ligadas</small></span>
+            </button>
+          )
+        })}
       </div>
+
+      <section className={`raia raia--${atual.id}`} aria-label={atual.titulo}>
+        <header className="raia__cabeca">
+          <div>
+            <h2 className="titulo-editorial pequeno-ed">{atual.titulo}</h2>
+            <p className="suave pequeno">{atual.sub} Toque numa mensagem para {dono ? 'editar o texto, o tempo ou desligar' : 'ver o texto'}.</p>
+          </div>
+          <div className="raia__legenda">
+            <span className="badge badge--off"><Icone nome="whats" tam={13} /> {atual.quem}</span>
+            <span className="suave pequeno">{n.ligadas}/{n.total} ligadas</span>
+          </div>
+        </header>
+        <div className={`fluxo ${atual.sequencia ? '' : 'fluxo--solto'}`} role="list">
+          {atual.etapas.map((e, i) => (
+            <section key={e.id} className={`fluxo__etapa ${e.centro ? 'fluxo__etapa--centro' : ''}`} role="listitem">
+              <header className="fluxo__cabeca">
+                <span className="fluxo__num">{atual.sequencia ? i + 1 : <Icone nome="whats" tam={14} />}</span>
+                <div><strong>{e.titulo}</strong><span className="suave pequeno">{e.sub}</span></div>
+              </header>
+              {e.centro ? (
+                <div className="fluxo__atendimento"><Icone nome="tesoura" tam={28} /><span>Cliente na cadeira</span></div>
+              ) : (
+                <div className="fluxo__nos">
+                  {(nos[`${atual.id}:${e.id}`] ?? []).map((no) => <CartaoNo key={no.tipo === 'modelo' ? no.m.chave : no.a.id} no={no} abrir={() => setAberto(no)} />)}
+                  {dono && e.criar && (
+                    <button className="fluxo__novo" onClick={() => setAberto({ tipo: 'nova', gatilho: e.criar![0] })}><Icone nome="mais" tam={16} /> Nova mensagem</button>
+                  )}
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
+      </section>
 
       {aberto && (aberto.tipo === 'modelo'
         ? <EditorModelo m={aberto.m} dono={dono} fechar={() => setAberto(null)} salvo={() => { setAberto(null); carregar() }} />
@@ -117,19 +176,21 @@ function Fluxo({ dono }: { dono: boolean }) {
   )
 }
 
+const unidadeCurta = (v: number, u: string) => (u === 'dias' ? (v === 1 ? 'dia' : 'dias') : u === 'minutos' ? 'min' : 'h')
+
 function rotuloTempo(n: No) {
-  if (n.tipo === 'auto') { const g = GATILHOS[n.a.gatilho]; return `${n.a.valor} ${g.unidade === 'dias' ? (n.a.valor === 1 ? 'dia' : 'dias') : 'h'} ${g.rotulo.replace(/^dias /, '')}` }
+  if (n.tipo === 'auto') { const g = GATILHOS[n.a.gatilho]; return `${n.a.valor} ${unidadeCurta(n.a.valor, g.unidade)} ${g.rotulo.replace(/^dias /, '')}` }
   const t = n.m.tempo
-  if (!t) return n.m.grupo === 'barbearia' ? 'para a barbearia' : 'na hora'
+  if (!t) return 'na hora'
   const v = n.m.valor ?? t.padrao
-  return `${v} ${t.unidade === 'dias' ? 'dias' : 'h'} ${t.rotulo}`
+  return `${v} ${unidadeCurta(v, t.unidade)} ${t.rotulo}`
 }
 
 function CartaoNo({ no, abrir }: { no: No; abrir: () => void }) {
   const ativo = no.tipo === 'modelo' ? no.m.ativo : no.a.ativo
   const nome = no.tipo === 'modelo' ? no.m.nome : no.a.nome
   const texto = no.tipo === 'modelo' ? no.m.texto : no.a.texto
-  const paraCasa = no.tipo === 'modelo' && no.m.grupo === 'barbearia'
+  const nova = no.tipo === 'modelo' && NOVAS.has(no.m.chave)
   return (
     <button className={`fluxo__no ${ativo ? '' : 'fluxo__no--off'} ${no.tipo === 'auto' ? 'fluxo__no--auto' : ''}`} onClick={abrir}>
       <span className="fluxo__no-topo">
@@ -139,7 +200,7 @@ function CartaoNo({ no, abrir }: { no: No; abrir: () => void }) {
       <span className="fluxo__tempo">{rotuloTempo(no)}</span>
       <span className="fluxo__trecho">{exemplo(texto).split('\n')[0]}</span>
       <span className="fluxo__tags">
-        {paraCasa && <span className="badge badge--off">equipe</span>}
+        {nova && <span className="badge">nova</span>}
         {no.tipo === 'auto' && <span className="badge">criada por você</span>}
         {no.tipo === 'modelo' && no.m.personalizado && <span className="badge">texto editado</span>}
         {!ativo && <span className="badge badge--off">desligada</span>}
@@ -147,6 +208,9 @@ function CartaoNo({ no, abrir }: { no: No; abrir: () => void }) {
     </button>
   )
 }
+
+/** mensagens que chegaram nesta versão (selo "nova" no fluxo) */
+const NOVAS = new Set(['adiantar', 'faltou', 'cancelamento_casa', 'cupom_vencendo', 'pedido_parado', 'aviso_adiantou', 'aviso_avaliacao'])
 
 /* ---------- editor de texto com variáveis e pré-visualização ---------- */
 function EditorTexto({ texto, mudar, variaveis, travado }: { texto: string; mudar: (t: string) => void; variaveis: string[]; travado: boolean }) {
@@ -263,33 +327,6 @@ function Gaveta({ titulo, fechar, children }: { titulo: string; fechar: () => vo
         {children}
       </aside>
     </div>
-  )
-}
-
-/* ====================== PRÓXIMAS ====================== */
-function Proximas() {
-  const [fila, setFila] = useState<ItemFila[] | null>(null)
-  useEffect(() => { api.painel.fila().then(setFila).catch(() => setFila([])) }, [])
-  if (!fila) return <div className="cartao cartao--esqueleto" />
-  if (!fila.length) return <p className="vazio">Nada programado para os próximos 7 dias.</p>
-  const dias = [...new Set(fila.map((f) => f.quando.slice(0, 10)))]
-  return (
-    <>
-      <p className="suave pequeno">Previsão dos próximos 7 dias. Pode mudar se o cliente remarcar ou cancelar.</p>
-      {dias.map((d) => (
-        <section key={d} className="painel__col">
-          <h2 className="secao capitalizar">{dataLonga(d)}</h2>
-          <div className="lista">
-            {fila.filter((f) => f.quando.startsWith(d)).map((f, i) => (
-              <div key={i} className="item item--estatico fila-item">
-                <span className="fila-item__hora">{hora(f.quando)}</span>
-                <div><strong>{f.nome}</strong><span className="suave">{TIPO[f.tipo] ?? f.tipo} · {f.resumo}</span></div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
-    </>
   )
 }
 

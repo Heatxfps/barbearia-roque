@@ -7,7 +7,9 @@ import { lerBarbearia, novoId } from '../db.ts'
 import { config } from '../config.ts'
 import { horariosLivres } from '../agenda.ts'
 import { agora, carimbo, dataIso, dataValida, normalizarTelefone } from '../tempo.ts'
-import { ErroNegocio, buscarServico } from '../servicos-agendamento.ts'
+import { ErroNegocio, avisarBarbeariaTexto, buscarServico } from '../servicos-agendamento.ts'
+import { aceitarAdiantar, infoAdiantar } from '../fila.ts'
+import { montar } from '../mensagens.ts'
 import { enviarWhatsApp } from '../whatsapp.ts'
 import { aniversarioValido } from './cliente.ts'
 import { textos } from '../textos.ts'
@@ -67,12 +69,29 @@ export async function rotasPublicas(app: FastifyInstance, db: DB) {
   app.post('/avaliacao/:id', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const { id } = z.object({ id: z.string().max(40) }).parse(req.params)
     const b = z.object({ nota: z.number().int().min(1).max(5), comentario: z.string().trim().max(500).default('') }).parse(req.body)
-    const a = db.prepare("SELECT cliente_id, profissional_id FROM agendamentos WHERE id = ? AND status = 'concluido'").get(id) as { cliente_id: string; profissional_id: string } | undefined
+    const a = db.prepare(`SELECT a.cliente_id, a.profissional_id, c.nome, c.telefone, p.nome AS profissional FROM agendamentos a
+                          JOIN clientes c ON c.id = a.cliente_id JOIN profissionais p ON p.id = a.profissional_id
+                          WHERE a.id = ? AND a.status = 'concluido'`).get(id) as { cliente_id: string; profissional_id: string; nome: string; telefone: string; profissional: string } | undefined
     if (!a) throw new ErroNegocio('Atendimento não encontrado', 404)
     if (db.prepare('SELECT 1 FROM avaliacoes WHERE agendamento_id = ?').get(id)) throw new ErroNegocio('Esse atendimento já foi avaliado. Obrigado!', 409)
     db.prepare('INSERT INTO avaliacoes (id, agendamento_id, cliente_id, profissional_id, nota, comentario, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .run(novoId(), id, a.cliente_id, a.profissional_id, b.nota, b.comentario, carimbo(agora()))
+    // nota baixa: avisa a barbearia na hora, para dar tempo de resolver
+    if (b.nota <= 3) {
+      const txt = montar(db, 'aviso_avaliacao', { nome: a.nome, nota: b.nota, comentario: b.comentario || 'sem comentário', barbeiro: a.profissional, telefone: a.telefone })
+      if (txt) void avisarBarbeariaTexto(db, 'aviso_avaliacao', txt)
+    }
     return reply.status(201).send({ ok: true })
+  })
+
+  /** Convite "pode adiantar": o link do WhatsApp leva o id do agendamento (aleatório) */
+  app.get('/adiantar/:id', async (req) => {
+    const { id } = z.object({ id: z.string().max(40) }).parse(req.params)
+    return infoAdiantar(db, id)
+  })
+  app.post('/adiantar/:id', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req) => {
+    const { id } = z.object({ id: z.string().max(40) }).parse(req.params)
+    return aceitarAdiantar(db, id)
   })
 
   /** Próximos dias com expediente e se ainda há vaga */

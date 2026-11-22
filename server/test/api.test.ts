@@ -344,11 +344,11 @@ test('mensagens: texto editado, mensagem desligada e automação nova', async ()
   const msgs = (await req('GET', '/api/admin/mensagens', undefined, dono)).json as { tipo: string; telefone: string; texto: string }[]
   assert.ok(msgs.some((m) => m.tipo === 'confirmacao' && m.texto === 'Valeu, Gabriel! Corte às 15:00.'))
 
-  const fila = (await req('GET', '/api/admin/mensagens/fila', undefined, dono)).json as { tipo: string; telefone: string; quando: string }[]
-  const doCliente = fila.filter((f) => f.telefone === '5527996660009')
-  assert.ok(doCliente.some((f) => f.tipo === 'automacao' && f.quando === `${D} 12:00`))
-  assert.ok(!doCliente.some((f) => f.tipo === 'lembrete_24h')) // desligado
-  assert.ok(doCliente.some((f) => f.tipo === 'lembrete_1h'))
+  // Clientes → Lembretes: véspera desligada, em cima da hora programado
+  const lem = ((await req('GET', '/api/admin/lembretes', undefined, dono)).json as { id: string; lembretes: { chave: string; estado: string; quando?: string }[] }[])
+    .find((x) => x.id === a.json.id)!
+  assert.equal(lem.lembretes.find((l) => l.chave === 'lembrete_24h')!.estado, 'desligada')
+  assert.deepEqual(lem.lembretes.find((l) => l.chave === 'lembrete_1h'), { chave: 'lembrete_1h', nome: 'Em cima da hora', estado: 'programada', quando: `${D} 14:00` })
 
   relogio = new Date(2030, 2, 7, 15, 0)   // véspera: lembrete desligado não sai
   await rodarTarefas(db)
@@ -365,4 +365,105 @@ test('mensagens: texto editado, mensagem desligada e automação nova', async ()
   await req('PUT', '/api/admin/modelos/lembrete_24h', { ativo: true }, dono)
   await req('DELETE', `/api/admin/automacoes/${au.json.id}`, undefined, dono)
   relogio = new Date(2030, 2, 4, 8, 0)
+})
+
+test('fila do dia: desmarcou ou terminou antes → convida o próximo a adiantar, um por vez', async () => {
+  const D = '2030-03-06' // quarta
+  relogio = new Date(2030, 2, 5, 9, 0)
+  const ana = await loginCliente('27996661001', 'Ana Fila')
+  const beto = await loginCliente('27996661002', 'Beto Fila')
+  const caio = await loginCliente('27996661003', 'Caio Fila')
+  const marcar = async (t: string, hora: string) => (await req('POST', '/api/me/agendamentos', { servicoId: 'corte', profissionalId: 'p2', data: D, hora }, t)).json.id as string
+  const aAna = await marcar(ana, '09:00')
+  const aBeto = await marcar(beto, '10:00')
+  const aCaio = await marcar(caio, '11:00')
+  const dono = await loginDono()
+  const doTel = async (tel: string, tipo: string) => ((await req('GET', '/api/admin/mensagens', undefined, dono)).json as { telefone: string; tipo: string; texto: string }[])
+    .filter((m) => m.telefone === tel && m.tipo === tipo)
+
+  // 8:30 do dia: Ana liga e a barbearia desmarca o das 9:00 → Beto (10:00) é convidado para 9:00 (abre às 9h)
+  relogio = new Date(2030, 2, 6, 8, 30)
+  const canc = await req('PATCH', `/api/admin/agendamentos/${aAna}`, { status: 'cancelado' }, dono)
+  assert.equal(canc.json.adiantar.para, `${D} 09:00`)
+  await new Promise((r) => setTimeout(r, 20))
+  const convite = (await doTel('5527996661002', 'adiantar'))[0]
+  assert.ok(convite, 'Beto recebeu o convite')
+  assert.match(convite.texto, /das 10:00 para as \*09:00\*/)
+  assert.match(convite.texto, new RegExp(`#adiantar/${aBeto}`))
+  // um por vez: Caio ainda não foi convidado
+  assert.equal((await doTel('5527996661003', 'adiantar')).length, 0)
+
+  // Beto aceita pelo link → horário muda, barbearia é avisada e Caio é convidado para o 11:00 que ficou livre
+  const info = (await req('GET', `/api/adiantar/${aBeto}`)).json
+  assert.equal(info.para, `${D} 09:00`)
+  const ok = await req('POST', `/api/adiantar/${aBeto}`)
+  assert.equal(ok.status, 200)
+  assert.equal(ok.json.inicio, `${D} 09:00`)
+  assert.equal((await req('POST', `/api/adiantar/${aBeto}`)).status, 410) // não aceita duas vezes
+  await new Promise((r) => setTimeout(r, 20))
+  const caioConv = (await doTel('5527996661003', 'adiantar'))[0]
+  assert.ok(caioConv, 'Caio convidado em cascata')
+  assert.match(caioConv.texto, /das 11:00 para as \*09:40\*/) // logo depois do Beto (9:00 + 40 min)
+
+  // Caio não responde em 20 min → convite vence
+  relogio = new Date(2030, 2, 6, 8, 55)
+  await rodarTarefas(db)
+  assert.equal((await req('POST', `/api/adiantar/${aCaio}`)).status, 410)
+
+  // Beto é atendido e o barbeiro marca concluído antes do previsto (9:25 em vez de 9:40): a agenda libera
+  relogio = new Date(2030, 2, 6, 9, 25)
+  const r = await req('PATCH', `/api/admin/agendamentos/${aBeto}`, { status: 'concluido' }, dono)
+  assert.equal(r.status, 200)
+  // Caio já foi convidado hoje: não recebe outro (sem insistir)
+  assert.equal(r.json.adiantar, null)
+  assert.equal((await doTel('5527996661003', 'adiantar')).length, 1)
+  const fimBeto = (db.prepare('SELECT fim FROM agendamentos WHERE id = ?').get(aBeto) as { fim: string }).fim
+  assert.equal(fimBeto, `${D} 09:25`)
+
+  relogio = new Date(2030, 2, 4, 8, 0)
+})
+
+test('pontos de contato: barbearia desmarca, faltou, remarcar sem comprovante, nota baixa avisa a casa', async () => {
+  relogio = new Date(2030, 2, 4, 8, 0)
+  const D = '2030-03-07'
+  const t = await loginCliente('27996662001', 'Davi Contato')
+  const dono = await loginDono()
+  const tipos = async () => ((await req('GET', '/api/admin/mensagens', undefined, dono)).json as { telefone: string; tipo: string }[])
+    .filter((m) => m.telefone === '5527996662001').map((m) => m.tipo)
+  const marcar = async (hora: string) => (await req('POST', '/api/me/agendamentos', { servicoId: 'corte', profissionalId: 'p1', data: D, hora }, t)).json.id as string
+
+  // remarcar: cancela sem mandar o comprovante
+  const a1 = await marcar('09:00')
+  await req('POST', `/api/me/agendamentos/${a1}/cancelar`, { remarcar: true }, t)
+  // barbearia desmarca: texto de desculpas
+  const a2 = await marcar('10:00')
+  await req('PATCH', `/api/admin/agendamentos/${a2}`, { status: 'cancelado' }, dono)
+  await new Promise((r) => setTimeout(r, 20))
+  let ts = await tipos()
+  assert.ok(!ts.includes('cancelamento'))
+  assert.ok(ts.includes('cancelamento_casa'))
+
+  // faltou: "sentimos sua falta"
+  const a3 = await marcar('11:00')
+  relogio = new Date(2030, 2, 7, 11, 30)
+  await req('PATCH', `/api/admin/agendamentos/${a3}`, { status: 'faltou' }, dono)
+  await new Promise((r) => setTimeout(r, 20))
+  ts = await tipos()
+  assert.ok(ts.includes('faltou'))
+
+  // nota baixa: vai para o WhatsApp da barbearia
+  relogio = new Date(2030, 2, 4, 8, 0)
+  const a4 = await marcar('15:00')
+  await req('PATCH', `/api/admin/agendamentos/${a4}`, { status: 'concluido' }, dono)
+  assert.equal((await req('POST', `/api/avaliacao/${a4}`, { nota: 2, comentario: 'Atrasou' })).status, 201)
+  await new Promise((r) => setTimeout(r, 20))
+  const casa = (await req('GET', '/api/admin/mensagens', undefined, dono)).json as { tipo: string; texto: string }[]
+  assert.ok(casa.some((m) => m.tipo === 'aviso_avaliacao' && m.texto.includes('Davi Contato') && m.texto.includes('Atrasou')))
+
+  // lembrete manual pelo painel
+  const a5 = await marcar('16:00')
+  assert.equal((await req('POST', `/api/admin/agendamentos/${a5}/lembrar`, {}, dono)).status, 200)
+  assert.equal((await req('POST', `/api/admin/agendamentos/${a5}/lembrar`, {}, dono)).status, 429)
+  const lem = ((await req('GET', '/api/admin/lembretes', undefined, dono)).json as { id: string; manual: { estado: string } | null }[]).find((x) => x.id === a5)!
+  assert.equal(lem.manual?.estado, 'enviada')
 })

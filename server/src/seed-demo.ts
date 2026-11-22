@@ -44,7 +44,7 @@ const clientes = nomes.map((nome, i) => {
   return id
 })
 
-// horários passados: lembretes já "enviados"; futuros: pendentes (aparecem em Mensagens → Próximas)
+// horários passados: lembretes já "enviados"; futuros: pendentes (aparecem em Clientes → Lembretes)
 const ins = db.prepare(`INSERT INTO agendamentos (id, cliente_id, profissional_id, servico_id, inicio, fim, preco, status, origem, criado_em, lembrete_24h, lembrete_1h)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 
@@ -107,6 +107,18 @@ if (produtos.length) {
 
 // algumas mensagens de exemplo no histórico do WhatsApp
 const msg = db.prepare('INSERT INTO mensagens (id, telefone, tipo, texto, status, criado_em) VALUES (?, ?, ?, ?, ?, ?)')
+// horários de hoje que ainda vão acontecer: a véspera já foi (uma falhou, para mostrar); o "em cima da hora" fica programado
+const msgRef = db.prepare('INSERT INTO mensagens (id, telefone, tipo, texto, status, erro, criado_em, ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+const deHoje = db.prepare(`SELECT a.id, a.inicio, c.nome, c.telefone FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id
+                           WHERE a.status = 'confirmado' AND substr(a.inicio,1,10) = ? AND a.inicio > ? ORDER BY a.inicio`).all(dataIso(hojeReal), carimbo(hojeReal)) as
+  { id: string; inicio: string; nome: string; telefone: string }[]
+deHoje.forEach((a, i) => {
+  const falhou = i === 1
+  msgRef.run(novoId(), a.telefone, 'lembrete_24h', `Oi, ${a.nome.split(' ')[0]}! Lembrete: tem horário na *Barbearia Roque* hoje, às ${a.inicio.slice(11, 16)}.`,
+    falhou ? 'erro' : 'demo', falhou ? 'HTTP 400: número sem WhatsApp' : null, carimbo(somarMin(new Date(a.inicio.replace(' ', 'T')), -24 * 60)), a.id)
+  db.prepare('UPDATE agendamentos SET lembrete_1h = 0 WHERE id = ? AND inicio > ?').run(a.id, carimbo(somarMin(hojeReal, 60)))
+})
+db.prepare("UPDATE pedidos SET separado_em = criado_em WHERE status IN ('separado','retirado')").run()
 msg.run(novoId(), '5527988000000', 'lembrete_24h', 'Oi, João! Lembrete: amanhã tem *Corte* na *Barbearia Roque*…', 'demo', carimbo(somarMin(hojeReal, -20 * 60)))
 msg.run(novoId(), '5527988001371', 'retorno', 'E aí, Marcos! Já faz 24 dias desde o seu último corte na *Barbearia Roque*…', 'demo', carimbo(somarMin(hojeReal, -26 * 60)))
 

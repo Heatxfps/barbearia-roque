@@ -6,6 +6,7 @@ import { config } from './config.ts'
 import { agora, carimbo, dataIso, somarMin } from './tempo.ts'
 import { enviarWhatsApp, type TipoMensagem } from './whatsapp.ts'
 import { montar, varsAgendamento } from './mensagens.ts'
+import { oferecerAdiantar, type Oferta } from './fila.ts'
 
 export class ErroNegocio extends Error {
   status: number
@@ -57,9 +58,12 @@ export function criarAgendamento(db: DB, dados: {
   return r
 }
 
-export function cancelarAgendamento(db: DB, id: string, porCliente?: string) {
-  const a = db.prepare('SELECT id, cliente_id, inicio, status FROM agendamentos WHERE id = ?').get(id) as
-    { id: string; cliente_id: string; inicio: string; status: string } | undefined
+/** Cancela. `porCliente`: id do cliente (cancelou pelo app); sem ele, foi a barbearia.
+ *  `remarcar`: o cliente vai escolher outro horário em seguida (não manda o comprovante de cancelamento).
+ *  Se o horário era hoje, convida o próximo cliente do barbeiro a adiantar. */
+export function cancelarAgendamento(db: DB, id: string, porCliente?: string, remarcar = false): Oferta | null {
+  const a = db.prepare('SELECT id, cliente_id, profissional_id, inicio, fim, status FROM agendamentos WHERE id = ?').get(id) as
+    { id: string; cliente_id: string; profissional_id: string; inicio: string; fim: string; status: string } | undefined
   if (!a || (porCliente && a.cliente_id !== porCliente)) throw new ErroNegocio('Agendamento não encontrado', 404)
   if (a.status !== 'confirmado') throw new ErroNegocio('Esse agendamento não pode mais ser cancelado')
   if (porCliente) {
@@ -72,24 +76,69 @@ export function cancelarAgendamento(db: DB, id: string, porCliente?: string) {
   db.prepare("UPDATE agendamentos SET status = 'cancelado' WHERE id = ?").run(id)
   // o cupom usado nesse horário volta a valer
   db.prepare('UPDATE cupons SET agendamento_id = NULL WHERE agendamento_id = ?').run(id)
-  void notificar(db, id, 'cancelamento')
+  if (!porCliente) void notificar(db, id, 'cancelamento_casa')
+  else if (!remarcar) void notificar(db, id, 'cancelamento')
   if (porCliente) void avisarBarbearia(db, id, 'cancelou')
+  return liberouHoje(db, a) ? oferecerAdiantar(db, a.profissional_id) : null
 }
 
-type Detalhe = { telefone: string; nome: string; servico: string; profissional: string; inicio: string }
+/** O horário liberado ainda está por vir hoje? */
+const liberouHoje = (_db: DB, a: { inicio: string; fim: string }) => a.inicio.slice(0, 10) === dataIso(agora()) && a.fim > carimbo(agora())
+
+/** Painel: muda o status do atendimento.
+ *  - concluído antes do previsto: o fim passa a ser agora (libera a agenda) e o próximo pode adiantar
+ *  - faltou: manda "sentimos sua falta" e o próximo pode adiantar */
+export function marcarStatus(db: DB, id: string, status: 'confirmado' | 'concluido' | 'faltou' | 'cancelado'): Oferta | null {
+  const a = db.prepare('SELECT id, profissional_id, inicio, fim, status FROM agendamentos WHERE id = ?').get(id) as
+    { id: string; profissional_id: string; inicio: string; fim: string; status: string } | undefined
+  if (!a) throw new ErroNegocio('Agendamento não encontrado', 404)
+  if (status === 'cancelado') return cancelarAgendamento(db, id)
+  db.prepare('UPDATE agendamentos SET status = ?, adiantar_para = NULL, adiantar_ate = NULL WHERE id = ?').run(status, id)
+  if (a.status !== 'confirmado') return null
+  const agoraTxt = carimbo(agora())
+  if (status === 'concluido' && a.inicio <= agoraTxt && carimbo(somarMin(agora(), 10)) < a.fim) {
+    const fim = new Date(agora()); fim.setSeconds(0, 0); fim.setMinutes(Math.ceil(fim.getMinutes() / 5) * 5)
+    db.prepare('UPDATE agendamentos SET fim = ? WHERE id = ?').run(carimbo(fim), id)
+    return oferecerAdiantar(db, a.profissional_id)
+  }
+  if (status === 'faltou') {
+    if (a.inicio > carimbo(somarMin(agora(), -24 * 60))) void notificar(db, id, 'faltou')
+    return liberouHoje(db, a) ? oferecerAdiantar(db, a.profissional_id) : null
+  }
+  return null
+}
+
+type Detalhe = { telefone: string; nome: string; servico: string; profissional: string; inicio: string; desconto: number }
 
 export function detalhe(db: DB, id: string): Detalhe | undefined {
-  return db.prepare(`SELECT c.telefone, c.nome, s.nome AS servico, p.nome AS profissional, a.inicio
+  return db.prepare(`SELECT c.telefone, c.nome, s.nome AS servico, p.nome AS profissional, a.inicio, a.desconto
                      FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id
                      JOIN servicos s ON s.id = a.servico_id JOIN profissionais p ON p.id = a.profissional_id
                      WHERE a.id = ?`).get(id) as Detalhe | undefined
 }
 
-export async function notificar(db: DB, id: string, tipo: 'confirmacao' | 'cancelamento' | 'lembrete_24h' | 'lembrete_1h') {
+export type TipoAgendamento = 'confirmacao' | 'cancelamento' | 'cancelamento_casa' | 'lembrete_24h' | 'lembrete_1h' | 'faltou'
+
+export async function notificar(db: DB, id: string, tipo: TipoAgendamento) {
   const d = detalhe(db, id)
-  if (!d) return
-  const texto = montar(db, tipo, varsAgendamento(d))
-  if (texto) await enviarWhatsApp(db, d.telefone, tipo, texto)
+  if (!d || d.telefone.startsWith('balcao-')) return
+  let texto = montar(db, tipo, varsAgendamento(d))
+  if (!texto) return
+  if (tipo === 'confirmacao' && d.desconto > 0) texto += `\n\n🎁 Desconto de aniversário aplicado: −${d.desconto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+  await enviarWhatsApp(db, d.telefone, tipo, texto, id)
+}
+
+/** Lembrete enviado na mão pelo painel (quando o automático falhou ou está desligado) */
+export async function lembrarAgora(db: DB, id: string) {
+  const d = detalhe(db, id)
+  if (!d) throw new ErroNegocio('Agendamento não encontrado', 404)
+  if (d.telefone.startsWith('balcao-')) throw new ErroNegocio('Esse cliente não tem WhatsApp cadastrado')
+  const recente = db.prepare("SELECT 1 FROM mensagens WHERE ref = ? AND tipo = 'lembrete_manual' AND criado_em > ?").get(id, carimbo(somarMin(agora(), -10)))
+  if (recente) throw new ErroNegocio('Já foi lembrado há menos de 10 minutos', 429)
+  // usa o texto do lembrete da véspera (mesmo desligado, porque aqui foi pedido na mão)
+  const v = varsAgendamento(d)
+  const texto = montar(db, 'lembrete_24h', v, true) ?? ''
+  await enviarWhatsApp(db, d.telefone, 'lembrete_manual', texto, id)
 }
 
 /** Avisa o WhatsApp da própria barbearia quando o cliente marca ou cancela pelo app,

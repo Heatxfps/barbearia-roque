@@ -11,6 +11,7 @@ import { config } from './config.ts'
 import { agora, carimbo } from './tempo.ts'
 
 export type TipoMensagem = 'codigo' | 'confirmacao' | 'lembrete_24h' | 'lembrete_1h' | 'cancelamento' | 'retorno' | 'aviso_novo' | 'aviso_cancelou' | 'avaliacao' | 'aniversario' | 'espera' | 'pedido' | 'pedido_separado' | 'aviso_pedido' | 'codigo_painel' | 'automacao'
+  | 'cancelamento_casa' | 'adiantar' | 'faltou' | 'cupom_vencendo' | 'pedido_parado' | 'aviso_adiantou' | 'aviso_avaliacao' | 'lembrete_manual'
 
 async function enviarDeVerdade(telefone: string, texto: string): Promise<void> {
   const w = config.whatsapp
@@ -31,11 +32,12 @@ async function enviarDeVerdade(telefone: string, texto: string): Promise<void> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`)
 }
 
-export async function enviarWhatsApp(db: DB, telefone: string, tipo: TipoMensagem, texto: string) {
+/** `ref`: id do agendamento, cliente ou pedido (para mostrar o status de cada mensagem no painel) */
+export async function enviarWhatsApp(db: DB, telefone: string, tipo: TipoMensagem, texto: string, ref?: string) {
   const id = novoId()
   const demo = config.whatsapp.modo === 'demo'
-  db.prepare('INSERT INTO mensagens (id, telefone, tipo, texto, status, criado_em) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, telefone, tipo, texto, demo ? 'demo' : 'enviando', carimbo(agora()))
+  db.prepare('INSERT INTO mensagens (id, telefone, tipo, texto, status, criado_em, ref) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(id, telefone, tipo, texto, demo ? 'demo' : 'enviando', carimbo(agora()), ref ?? null)
   if (demo) return
   try {
     await enviarDeVerdade(telefone, texto)

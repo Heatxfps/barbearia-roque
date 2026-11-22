@@ -27,7 +27,13 @@ export default function Agenda({ usuario }: { usuario: UsuarioPainel }) {
   const mudarDia = (n: number) => { const d = lerData(data); d.setDate(d.getDate() + n); setData(dataIso(d)) }
   const marcar = async (a: ItemAgenda, s: Status) => {
     if (s === 'cancelado' && !(await confirmar(`Cancelar o horário de ${a.cliente}? Ele recebe um aviso no WhatsApp.`, { botao: 'Cancelar horário' }))) return
-    try { await api.painel.status(a.id, s); avisar(`${a.cliente}: ${ROTULO[s].toLowerCase()}`); carregar() } catch (e) { avisar((e as Error).message, 'erro') }
+    try {
+      const r = await api.painel.status(a.id, s)
+      // abriu espaço hoje: o app convidou o próximo cliente do barbeiro a vir mais cedo
+      if (r?.adiantar) avisar(`${a.cliente}: ${ROTULO[s].toLowerCase()}. Convidamos ${primeiroNome(r.adiantar.cliente)} para adiantar para as ${hora(r.adiantar.para)}.`)
+      else avisar(`${a.cliente}: ${ROTULO[s].toLowerCase()}`)
+      carregar()
+    } catch (e) { avisar((e as Error).message, 'erro') }
   }
   const liberar = async (b: Bloqueio) => { try { await api.painel.desbloquear(b.id); carregar() } catch (e) { avisar((e as Error).message, 'erro') } }
 
@@ -95,7 +101,7 @@ export default function Agenda({ usuario }: { usuario: UsuarioPainel }) {
       {!!agenda?.espera?.length && (
         <div className="cartao espera-painel">
           <div className="linha-entre"><h3>Lista de espera do dia</h3><span className="badge">{agenda.espera.length}</span></div>
-          <p className="suave pequeno">Se abrir uma vaga, o app avisa o primeiro da fila no WhatsApp; 30 min depois, o próximo.</p>
+          <p className="suave pequeno">Se abrir uma vaga, o app avisa o primeiro da lista de espera no WhatsApp; 30 min depois, o próximo. Quem já tem horário hoje é convidado a adiantar quando alguém desmarca ou um atendimento termina antes.</p>
           {agenda.espera.map((e, i) => (
             <div key={e.id} className="linha-entre espera-painel__linha">
               <div><strong>{i + 1}. {e.cliente}</strong><span className="suave pequeno"> · {e.servico} · {e.profissional}{e.avisadoEm ? ` · avisado às ${hora(e.avisadoEm)}` : ''}</span></div>
@@ -191,7 +197,7 @@ function LinhaTempo({ itens, bloqueios, marcar, liberar, mostrarProf }: { itens:
           <div key={x.a.id} className={`evento evento--${x.a.status}`}>
             <span className="evento__hora">{hora(x.a.inicio)}<small>{hora(x.a.fim)}</small></span>
             <div className="evento__corpo">
-              <strong>{x.a.cliente} {x.a.visitas === 0 && <span className="badge">1ª vez</span>}</strong>
+              <strong>{x.a.cliente} {x.a.visitas === 0 && <span className="badge">1ª vez</span>} {x.a.adiantarPara && <span className="badge" title="Convidado a vir mais cedo; aguardando resposta (20 min)">⏩ convidado p/ {hora(x.a.adiantarPara)}</span>}</strong>
               <span className="suave">{x.a.servico}{mostrarProf ? ` · ${primeiroNome(x.a.profissional)}` : ''} · {moeda(x.a.preco)}{x.a.desconto ? ' 🎂' : ''} · {x.a.origem === 'balcao' ? 'balcão' : 'app'}</span>
               <div className="evento__acoes">
                 {x.a.status === 'confirmado' ? (

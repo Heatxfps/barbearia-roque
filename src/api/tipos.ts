@@ -43,6 +43,8 @@ export type Agendamento = {
   desconto?: number
   avaliacao?: number | null
   status: Status
+  /** convite "pode adiantar" valendo: novo início oferecido */
+  adiantarPara?: string | null
 }
 
 export type Dia = { data: string; livres: number }
@@ -50,8 +52,25 @@ export type Dia = { data: string; livres: number }
 export type UsuarioPainel = { nome: string; email: string; papel: 'dono' | 'barbeiro'; profissionalId: string | null; trocarSenha?: boolean; verificacaoWhatsApp?: boolean }
 /** login do painel: entra direto, ou (dono com WhatsApp cadastrado) pede o código */
 export type ResultadoLogin = { usuario: UsuarioPainel } | { etapa: 'codigo'; desafio: string; destino: string; codigoDemo?: string }
-export type Retorno = { id: string; nome: string; telefone: string; dias: number; avisado: boolean; ultimaVisita: string }
-export type Aniversariante = { id: string; nome: string; telefone: string; aniversario: string; emDias: number }
+/** Situação de uma mensagem automática (Clientes → lembretes, chamar de volta, aniversários) */
+export type EstadoMsg =
+  | { estado: 'enviada' | 'falhou'; quando: string; erro?: string | null; tipo?: string }
+  | { estado: 'programada'; quando: string }
+  | { estado: 'nao_vai' | 'desligada' | 'sem_whatsapp'; motivo?: string }
+export type Retorno = { id: string; nome: string; telefone: string; dias: number; avisado: boolean; ultimaVisita: string; barbeiro?: string | null; estado?: EstadoMsg }
+export type Aniversariante = {
+  id: string; nome: string; telefone: string; aniversario: string; emDias: number
+  estado?: EstadoMsg; cupom?: { status: 'usado' | 'ativo' | 'vencido'; validoAte: string; desconto: number } | null
+}
+export type ItemLembrete = {
+  id: string; inicio: string; cliente: string; telefone: string; servico: string; profissional: string
+  semWhatsapp: boolean; adiantarPara: string | null
+  lembretes: ({ chave: string; nome: string } & EstadoMsg)[]
+  manual: EstadoMsg | null
+}
+/** convite "pode adiantar" enviado ao próximo cliente */
+export type Oferta = { agendamentoId: string; cliente: string; de: string; para: string }
+export type ConviteAdiantar = { id: string; cliente: string; servico: string; profissional: string; foto: string | null; inicio: string; para: string | null; status: Status }
 
 export type Resumo = {
   data: string
@@ -64,7 +83,7 @@ export type Resumo = {
 
 export type ItemAgenda = Agendamento & { origem: 'app' | 'balcao'; cliente: string; telefone: string; visitas: number }
 export type Bloqueio = { id: string; inicio: string; fim: string; motivo: string; profissionalId: string; profissional: string }
-export type Mensagem = { id: string; telefone: string; tipo: string; texto: string; status: string; erro?: string; criadoEm: string }
+export type Mensagem = { id: string; telefone: string; tipo: string; texto: string; status: string; erro?: string; criadoEm: string; ref?: string }
 export type Produto = { id: string; nome: string; descricao: string; preco: number; foto?: string | null; ativo?: boolean }
 export type ItemPedido = { nome: string; preco: number; qtd: number }
 export type StatusPedido = 'novo' | 'separado' | 'retirado' | 'cancelado'
@@ -85,7 +104,6 @@ export type ProfissionalPainel = Profissional & { ativo: boolean; expediente: Ex
 export type DadosBarbearia = { nome: string; cidade: string; endereco: string; whatsapp: string; instagram: string; dono: string; google_avaliacao: string; desconto_aniversario: number; validade_aniversario: number }
 export type ModeloMsg = ModeloPadrao & { padrao: string; ativo: boolean; valor: number | null; personalizado: boolean }
 export type Automacao = { id: string; nome: string; gatilho: Gatilho; valor: number; texto: string; ativo: boolean }
-export type ItemFila = { quando: string; tipo: string; nome: string; telefone: string; resumo: string }
 export type NovoProfissional = { nome: string; especialidade: string; ativo: boolean; foto?: string | null; expediente?: Expediente[] }
 export type ClientePainel = { id: string; nome: string; telefone: string; visitas: number; faltas: number; ultimaVisita: string | null }
 
@@ -103,7 +121,9 @@ export interface Api {
 
   meusAgendamentos(): Promise<{ agora: string; agendamentos: Agendamento[] }>
   agendar(d: { servicoId: string; profissionalId: string; data: string; hora: string }): Promise<{ id: string; profissionalId: string; inicio: string }>
-  cancelar(id: string): Promise<void>
+  cancelar(id: string, remarcar?: boolean): Promise<void>
+  convite(id: string): Promise<ConviteAdiantar>
+  adiantar(id: string): Promise<{ inicio: string }>
 
   minhaEspera(): Promise<Espera[]>
   entrarEspera(d: { servicoId: string; profissionalId: string; data: string }): Promise<{ posicao: number }>
@@ -132,13 +152,14 @@ export interface Api {
     avaliacoes(): Promise<ResumoAvaliacoes>
     pedidos(todos?: boolean): Promise<PedidoPainel[]>
     statusPedido(id: string, status: StatusPedido): Promise<void>
-    status(id: string, status: Status): Promise<void>
+    status(id: string, status: Status): Promise<{ adiantar?: Oferta | null }>
+    lembretes(): Promise<ItemLembrete[]>
+    lembrar(id: string): Promise<void>
     encaixe(d: { nome: string; telefone?: string; servicoId: string; profissionalId: string; data: string; hora: string }): Promise<void>
     bloquear(d: { profissionalId: string; data: string; inicio: string; fim: string; motivo: string }): Promise<void>
     desbloquear(id: string): Promise<void>
     clientes(busca: string): Promise<ClientePainel[]>
     mensagens(status?: 'todas' | 'enviadas' | 'falharam'): Promise<Mensagem[]>
-    fila(): Promise<ItemFila[]>
     modelos(): Promise<ModeloMsg[]>
     salvarModelo(chave: string, d: { texto?: string | null; ativo?: boolean; valor?: number | null }): Promise<void>
     automacoes(): Promise<Automacao[]>

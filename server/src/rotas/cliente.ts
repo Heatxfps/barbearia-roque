@@ -6,6 +6,7 @@ import { lerBarbearia, novoId, transacao } from '../db.ts'
 import { exigirCliente } from '../auth.ts'
 import { agora, carimbo, dataIso, dataValida, horaValida } from '../tempo.ts'
 import { ErroNegocio, avisarBarbeariaTexto, cancelarAgendamento, criarAgendamento, cupomAtivo, fidelidade } from '../servicos-agendamento.ts'
+import { aceitarAdiantar } from '../fila.ts'
 import { horariosLivres } from '../agenda.ts'
 import { enviarWhatsApp } from '../whatsapp.ts'
 import { montar } from '../mensagens.ts'
@@ -44,10 +45,11 @@ export async function rotasCliente(app: FastifyInstance, db: DB) {
 
   app.get('/me/agendamentos', async (req) => {
     const lista = db.prepare(`SELECT a.id, a.servico_id AS servicoId, a.profissional_id AS profissionalId, a.inicio, a.fim, a.preco, a.desconto, a.status,
-                                     s.nome AS servico, p.nome AS profissional, v.nota AS avaliacao
+                                     s.nome AS servico, p.nome AS profissional, v.nota AS avaliacao,
+                                     CASE WHEN a.status = 'confirmado' AND a.adiantar_ate > ? THEN a.adiantar_para END AS adiantarPara
                               FROM agendamentos a JOIN servicos s ON s.id = a.servico_id JOIN profissionais p ON p.id = a.profissional_id
                               LEFT JOIN avaliacoes v ON v.agendamento_id = a.id
-                              WHERE a.cliente_id = ? ORDER BY a.inicio DESC LIMIT 100`).all(idCliente(req.user))
+                              WHERE a.cliente_id = ? ORDER BY a.inicio DESC LIMIT 100`).all(carimbo(agora()), idCliente(req.user))
     return { agora: carimbo(agora()), agendamentos: lista }
   })
 
@@ -66,8 +68,15 @@ export async function rotasCliente(app: FastifyInstance, db: DB) {
 
   app.post('/me/agendamentos/:id/cancelar', async (req) => {
     const { id } = z.object({ id: z.string() }).parse(req.params)
-    cancelarAgendamento(db, id, idCliente(req.user))
+    const { remarcar } = z.object({ remarcar: z.boolean().default(false) }).parse(req.body ?? {})
+    cancelarAgendamento(db, id, idCliente(req.user), remarcar)
     return { ok: true }
+  })
+
+  /** aceitar o convite "pode adiantar" pelo app (Meus horários) */
+  app.post('/me/agendamentos/:id/adiantar', async (req) => {
+    const { id } = z.object({ id: z.string() }).parse(req.params)
+    return aceitarAdiantar(db, id, idCliente(req.user))
   })
 
   // ---------- lista de espera ----------
@@ -132,7 +141,7 @@ export async function rotasCliente(app: FastifyInstance, db: DB) {
     const total = itens.reduce((t, i) => t + i.preco * i.qtd, 0)
     const resumo = itens.map((i) => `• ${i.qtd}× ${i.nome}`).join('\n')
     const txtCliente = montar(db, 'pedido', { nome: c.nome.split(' ')[0], itens: resumo, total: moeda(total) })
-    if (txtCliente) void enviarWhatsApp(db, c.telefone, 'pedido', txtCliente)
+    if (txtCliente) void enviarWhatsApp(db, c.telefone, 'pedido', txtCliente, pedidoId)
     const txtCasa = montar(db, 'aviso_pedido', { nome: c.nome, telefone: c.telefone, itens: resumo + (b.observacao ? `\nObs.: ${b.observacao}` : ''), total: moeda(total) })
     if (txtCasa) void avisarBarbeariaTexto(db, 'aviso_pedido', txtCasa)
     return reply.status(201).send({ id: pedidoId, total })

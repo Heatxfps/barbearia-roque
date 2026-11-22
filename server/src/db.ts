@@ -269,6 +269,14 @@ function migrar(db: DB) {
   garantir('agendamentos', 'desconto', 'REAL NOT NULL DEFAULT 0')
   garantir('usuarios', 'telefone', 'TEXT')                       // WhatsApp do dono: recebe o código de entrada
   garantir('usuarios', 'trocar_senha', 'INTEGER NOT NULL DEFAULT 0') // barbeiro novo troca a senha no 1º acesso
+  garantir('mensagens', 'ref', 'TEXT')                           // agendamento, cliente ou pedido a que a mensagem se refere
+  garantir('agendamentos', 'adiantar_para', 'TEXT')              // convite "pode adiantar": novo início oferecido
+  garantir('agendamentos', 'adiantar_ate', 'TEXT')               // ...e até quando vale
+  garantir('agendamentos', 'adiantar_oferecido', 'INTEGER NOT NULL DEFAULT 0')
+  garantir('cupons', 'aviso_vencendo', 'INTEGER NOT NULL DEFAULT 0')
+  garantir('pedidos', 'separado_em', 'TEXT')
+  garantir('pedidos', 'lembrete_enviado', 'INTEGER NOT NULL DEFAULT 0')
+  db.exec('CREATE INDEX IF NOT EXISTS msg_ref ON mensagens(ref, tipo)')
 }
 
 /** Produtos de exemplo, uma vez só (o dono troca pelo painel). */

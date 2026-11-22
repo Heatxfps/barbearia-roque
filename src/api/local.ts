@@ -3,8 +3,8 @@
  * Imita a API guardando tudo no próprio celular, com dados de demonstração.
  * As regras são as mesmas do servidor (duração, intervalo, conflitos), em versão simplificada.
  */
-import { MODELOS } from '../../shared/modelos'
-import type { Agendamento, Api, Automacao, ItemFila, ModeloMsg, Barbearia, Bloqueio, Cliente, DadosBarbearia, ItemAgenda, Mensagem, Pedido, Produto, Servico, Status, UsuarioLista } from './tipos'
+import { MODELOS, preencher } from '../../shared/modelos'
+import type { Agendamento, Api, Automacao, EstadoMsg, ItemLembrete, ModeloMsg, Oferta, Barbearia, Bloqueio, Cliente, DadosBarbearia, ItemAgenda, Mensagem, Pedido, Produto, Servico, Status, UsuarioLista } from './tipos'
 
 const p2 = (n: number) => String(n).padStart(2, '0')
 const dataIso = (d: Date) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
@@ -35,7 +35,8 @@ const EXPEDIENTE: Record<number, [string, string, string?, string?] | null> = {
 }
 const META = 10
 
-type Ag = { id: string; clienteId: string; profissionalId: string; servicoId: string; inicio: string; fim: string; preco: number; desconto?: number; status: Status; origem: 'app' | 'balcao' }
+type Ag = { id: string; clienteId: string; profissionalId: string; servicoId: string; inicio: string; fim: string; preco: number; desconto?: number; status: Status; origem: 'app' | 'balcao'
+  adiantarPara?: string | null; adiantarAte?: string | null; adiantarOferecido?: boolean }
 type Banco = {
   servicos: Servico[]
   clientes: { id: string; nome: string; telefone: string; aniversario?: string | null; cupomAno?: number }[]
@@ -136,8 +137,63 @@ const servico = (sid: string) => banco.servicos.find((s) => s.id === sid)!
 const nomeProf = (pid: string) => PROFS.find((p) => p.id === pid)?.nome ?? ''
 const cliente = (cid: string) => banco.clientes.find((c) => c.id === cid)
 const paraAgendamento = (a: Ag): Agendamento => ({ ...a, servico: servico(a.servicoId)?.nome ?? '', profissional: nomeProf(a.profissionalId) })
-const msg = (telefone: string, tipo: string, texto: string) =>
-  banco.mensagens.unshift({ id: id(), telefone, tipo, texto, status: 'demo', criadoEm: carimbo(new Date()) })
+const msg = (telefone: string, tipo: string, texto: string, ref?: string) =>
+  banco.mensagens.unshift({ id: id(), telefone, tipo, texto, status: 'demo', criadoEm: carimbo(new Date()), ref })
+
+/** texto de uma mensagem automática (com o que o dono editou), ou null se estiver desligada */
+function modelo(chave: string, vars: Record<string, string | number | undefined>, mesmoDesligada = false) {
+  const m = MODELOS.find((x) => x.chave === chave)!
+  const o = banco.modelos?.[chave]
+  if (o?.ativo === false && !mesmoDesligada) return null
+  const b = dados()
+  return preencher(o?.texto ?? m.texto, { barbearia: b.nome, endereco: b.endereco, cidade: b.cidade.split(' - ')[0], link: location.href.split('#')[0], ...vars })
+}
+const tempoModelo = (chave: string) => banco.modelos?.[chave]?.valor ?? MODELOS.find((x) => x.chave === chave)?.tempo?.padrao ?? 0
+const varsAg = (a: Ag) => ({ nome: cliente(a.clienteId)!.nome.split(' ')[0], servico: servico(a.servicoId).nome, barbeiro: nomeProf(a.profissionalId), data: new Date(ler(a.inicio)).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }), hora: a.inicio.slice(11, 16) })
+const livreEntre = (prof: string, ini: string, fim: string, ignorar: string) => {
+  const e = EXPEDIENTE[ler(ini).getDay()]
+  const data = ini.slice(0, 10)
+  if (!e || ini < `${data} ${e[0]}` || fim > `${data} ${e[1]}` || (e[2] && ini < `${data} ${e[3]}` && `${data} ${e[2]}` < fim)) return false
+  return !banco.agendamentos.some((a) => a.id !== ignorar && a.profissionalId === prof && (a.status === 'confirmado' || a.status === 'concluido') && a.inicio < fim && ini < a.fim)
+    && !banco.bloqueios.some((b) => b.profissionalId === prof && b.inicio < fim && ini < b.fim)
+}
+/** mesma regra do servidor (fila.ts): abriu espaço hoje → convida o próximo cliente do barbeiro a adiantar */
+function oferecer(prof: string): Oferta | null {
+  if (banco.modelos?.adiantar?.ativo === false) return null
+  const agora = new Date(), agoraTxt = carimbo(agora)
+  if (agora.getHours() < 8 || agora.getHours() >= 21) return null
+  if (banco.agendamentos.some((a) => a.profissionalId === prof && a.status === 'confirmado' && (a.adiantarAte ?? '') > agoraTxt)) return null
+  const ganho = tempoModelo('adiantar')
+  const base = new Date(agora.getTime() + 15 * 60000); base.setSeconds(0, 0); base.setMinutes(Math.ceil(base.getMinutes() / 5) * 5)
+  const cands = banco.agendamentos.filter((a) => a.profissionalId === prof && a.status === 'confirmado' && a.inicio.startsWith(dataIso(agora)) && !a.adiantarOferecido
+    && a.inicio >= carimbo(new Date(base.getTime() + ganho * 60000)) && a.inicio <= carimbo(new Date(agora.getTime() + 4 * 36e5)) && !cliente(a.clienteId)!.telefone.startsWith('balcao')).sort((x, y) => x.inicio.localeCompare(y.inicio))
+  for (const a of cands) {
+    const dur = (ler(a.fim).getTime() - ler(a.inicio).getTime()) / 60000
+    for (let t = base.getTime(); carimbo(new Date(t)) <= carimbo(new Date(ler(a.inicio).getTime() - ganho * 60000)); t += 5 * 60000) {
+      const ini = carimbo(new Date(t))
+      if (!livreEntre(prof, ini, carimbo(new Date(t + dur * 60000)), a.id)) continue
+      Object.assign(a, { adiantarPara: ini, adiantarAte: carimbo(new Date(agora.getTime() + 20 * 60000)), adiantarOferecido: true })
+      const txt = modelo('adiantar', { ...varsAg(a), nova_hora: ini.slice(11, 16), link: `${location.href.split('#')[0]}#adiantar/${a.id}` })
+      if (txt) msg(cliente(a.clienteId)!.telefone, 'adiantar', txt, a.id)
+      return { agendamentoId: a.id, cliente: cliente(a.clienteId)!.nome, de: a.inicio, para: ini }
+    }
+  }
+  return null
+}
+const proximoRetorno = (): EstadoMsg => {
+  if (banco.modelos?.retorno?.ativo === false) return { estado: 'desligada' }
+  const d = new Date(); d.setSeconds(0, 0)
+  if (d.getHours() >= 19) { d.setDate(d.getDate() + 1); d.setHours(10, 0) } else if (d.getHours() < 10) d.setHours(10, 0)
+  return { estado: 'programada', quando: carimbo(d) }
+}
+const hojeAinda = (a: Ag) => a.inicio.startsWith(dataIso(new Date())) && a.fim > carimbo(new Date())
+function estadoLocal(chave: string, quando: string, ref?: string): EstadoMsg {
+  const m = banco.mensagens.find((x) => x.ref === ref && x.tipo === chave)
+  if (m) return { estado: m.status === 'erro' ? 'falhou' : 'enviada', quando: m.criadoEm }
+  if (banco.modelos?.[chave]?.ativo === false) return { estado: 'desligada' }
+  const agoraTxt = carimbo(new Date())
+  return { estado: 'programada', quando: quando < agoraTxt ? agoraTxt : quando }
+}
 
 function eu(): Cliente | null {
   const c = banco.sessao ? cliente(banco.sessao) : undefined
@@ -208,7 +264,7 @@ export const apiLocal: Api = {
     return {
       agora: carimbo(new Date()),
       agendamentos: banco.agendamentos.filter((a) => a.clienteId === banco.sessao).sort((a, b) => b.inicio.localeCompare(a.inicio))
-        .map((a) => ({ ...paraAgendamento(a), avaliacao: banco.avaliacoes?.find((v) => v.agendamentoId === a.id)?.nota ?? null })),
+        .map((a) => ({ ...paraAgendamento(a), avaliacao: banco.avaliacoes?.find((v) => v.agendamentoId === a.id)?.nota ?? null, adiantarPara: (a.adiantarAte ?? '') > carimbo(new Date()) ? a.adiantarPara : null })),
     }
   },
   async agendar(d) {
@@ -233,12 +289,38 @@ ${c.nome} · ${sv.nome}
     salvar()
     return { id: a.id, profissionalId: prof, inicio, desconto }
   },
-  async cancelar(aid) {
+  async cancelar(aid, remarcar = false) {
     const a = banco.agendamentos.find((x) => x.id === aid && x.clienteId === banco.sessao)
     if (!a) throw new Error('Agendamento não encontrado')
     if (a.inicio < carimbo(new Date(Date.now() + 120 * 60000))) throw new Error('Cancelamentos pelo app só até 2h antes. Fale com a barbearia pelo WhatsApp.')
     a.status = 'cancelado'
+    const txt = remarcar ? null : modelo('cancelamento', varsAg(a))
+    if (txt) msg(cliente(a.clienteId)!.telefone, 'cancelamento', txt, a.id)
+    const aviso = modelo('aviso_cancelou', { ...varsAg(a), nome: cliente(a.clienteId)!.nome })
+    if (aviso) msg(dados().whatsapp, 'aviso_cancelou', aviso)
+    if (hojeAinda(a)) oferecer(a.profissionalId)
     salvar()
+  },
+  async convite(aid) {
+    const a = banco.agendamentos.find((x) => x.id === aid)
+    if (!a) throw new Error('Convite não encontrado')
+    const p = PROFS.find((x) => x.id === a.profissionalId)
+    const valido = a.status === 'confirmado' && (a.adiantarAte ?? '') > carimbo(new Date())
+    return { id: a.id, cliente: cliente(a.clienteId)!.nome.split(' ')[0], servico: servico(a.servicoId).nome, profissional: p?.nome ?? '', foto: p?.foto ?? null, inicio: a.inicio, para: valido ? a.adiantarPara ?? null : null, status: a.status }
+  },
+  async adiantar(aid) {
+    const a = banco.agendamentos.find((x) => x.id === aid)
+    if (!a || a.status !== 'confirmado' || !a.adiantarPara || (a.adiantarAte ?? '') <= carimbo(new Date())) throw new Error('Esse convite não está mais valendo. Seu horário continua o mesmo.')
+    const dur = ler(a.fim).getTime() - ler(a.inicio).getTime()
+    const para = a.adiantarPara, fim = carimbo(new Date(ler(para).getTime() + dur))
+    if (!livreEntre(a.profissionalId, para, fim, a.id)) throw new Error('Alguém pegou esse espaço antes. Seu horário continua o mesmo.')
+    const antes = varsAg(a)
+    Object.assign(a, { inicio: para, fim, adiantarPara: null, adiantarAte: null })
+    const aviso = modelo('aviso_adiantou', { ...antes, nome: cliente(a.clienteId)!.nome, nova_hora: para.slice(11, 16) })
+    if (aviso) msg(dados().whatsapp, 'aviso_adiantou', aviso)
+    oferecer(a.profissionalId)
+    salvar()
+    return { inicio: para }
   },
 
   async minhaEspera() {
@@ -302,13 +384,18 @@ ${c.nome} · ${sv.nome}
       const futuros = new Set(banco.agendamentos.filter((a) => a.status === 'confirmado').map((a) => a.clienteId))
       return Object.entries(ultima).map(([cid, u]) => ({ cid, u, dias: Math.floor((Date.now() - ler(u).getTime()) / 864e5) }))
         .filter((x) => x.dias >= 20 && !futuros.has(x.cid)).sort((a, b) => b.dias - a.dias)
-        .map((x) => ({ id: x.cid, nome: cliente(x.cid)!.nome, telefone: cliente(x.cid)!.telefone, dias: x.dias, avisado: true, ultimaVisita: x.u }))
+        .map((x) => ({ id: x.cid, nome: cliente(x.cid)!.nome, telefone: cliente(x.cid)!.telefone, dias: x.dias, avisado: false, ultimaVisita: x.u, estado: proximoRetorno() }))
     },
     async aniversariantes() {
       const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
       const dias = Array.from({ length: 7 }, (_, i) => dataIso(new Date(hoje.getTime() + i * 864e5)).slice(5))
       return banco.clientes.filter((c) => c.aniversario && dias.includes(c.aniversario))
-        .map((c) => ({ id: c.id, nome: c.nome, telefone: c.telefone, aniversario: c.aniversario!, emDias: dias.indexOf(c.aniversario!) })).sort((a, b) => a.emDias - b.emDias)
+        .map((c) => {
+          const emDias = dias.indexOf(c.aniversario!)
+          const q = new Date(hoje.getTime() + emDias * 864e5); q.setHours(9, 0, 0, 0)
+          const estado: EstadoMsg = banco.modelos?.aniversario?.ativo === false || !dados().desconto_aniversario ? { estado: 'desligada' } : { estado: 'programada', quando: carimbo(q < new Date() ? new Date() : q) }
+          return { id: c.id, nome: c.nome, telefone: c.telefone, aniversario: c.aniversario!, emDias, estado }
+        }).sort((a, b) => a.emDias - b.emDias)
     },
     async salvarSeguranca() { throw new Error(OFFLINE) },
     sair() { banco.painel = false; salvar() },
@@ -371,7 +458,52 @@ ${c.nome} · ${sv.nome}
         .map((o) => { const c = cliente(o.clienteId)!; return { ...o, cliente: c.nome, telefone: c.telefone } })
     },
     async statusPedido(pid, st) { const o = (banco.pedidos ?? []).find((x) => x.id === pid); if (o) o.status = st; salvar() },
-    async status(aid, status) { const a = banco.agendamentos.find((x) => x.id === aid); if (a) a.status = status; salvar() },
+    async status(aid, status) {
+      const a = banco.agendamentos.find((x) => x.id === aid)
+      if (!a) return {}
+      const antes = a.status
+      a.status = status; a.adiantarPara = null; a.adiantarAte = null
+      let adiantar: Oferta | null = null
+      const tel = cliente(a.clienteId)!.telefone
+      if (antes === 'confirmado') {
+        const agoraTxt = carimbo(new Date())
+        if (status === 'concluido' && a.inicio <= agoraTxt && carimbo(new Date(Date.now() + 10 * 60000)) < a.fim) {
+          const f = new Date(); f.setSeconds(0, 0); f.setMinutes(Math.ceil(f.getMinutes() / 5) * 5); a.fim = carimbo(f)
+          adiantar = oferecer(a.profissionalId)
+        } else if (status === 'faltou' || status === 'cancelado') {
+          const txt = modelo(status === 'faltou' ? 'faltou' : 'cancelamento_casa', varsAg(a))
+          if (txt && !tel.startsWith('balcao')) msg(tel, status === 'faltou' ? 'faltou' : 'cancelamento_casa', txt, a.id)
+          if (hojeAinda(a)) adiantar = oferecer(a.profissionalId)
+        }
+      }
+      salvar()
+      return { adiantar }
+    },
+    async lembretes() {
+      const agora = new Date(), agoraTxt = carimbo(agora), ate = carimbo(new Date(Date.now() + 7 * 864e5))
+      const h1 = tempoModelo('lembrete_1h') * 60, h24 = Math.max(tempoModelo('lembrete_24h') * 60, h1 + 60)
+      return banco.agendamentos.filter((a) => a.status === 'confirmado' && a.inicio > agoraTxt && a.inicio <= ate).sort((x, y) => x.inicio.localeCompare(y.inicio)).map((a): ItemLembrete => {
+        const c = cliente(a.clienteId)!
+        const sem = c.telefone.startsWith('balcao')
+        const q = (m: number) => carimbo(new Date(ler(a.inicio).getTime() - m * 60000))
+        const est = (chave: string, m: number): EstadoMsg => sem ? { estado: 'sem_whatsapp' } : estadoLocal(chave, q(m), a.id)
+        const manual = banco.mensagens.find((x) => x.ref === a.id && x.tipo === 'lembrete_manual')
+        return {
+          id: a.id, inicio: a.inicio, cliente: c.nome, telefone: c.telefone, servico: servico(a.servicoId).nome, profissional: nomeProf(a.profissionalId), semWhatsapp: sem,
+          adiantarPara: (a.adiantarAte ?? '') > agoraTxt ? a.adiantarPara ?? null : null,
+          lembretes: [{ chave: 'lembrete_24h', nome: 'Véspera', ...est('lembrete_24h', h24) }, { chave: 'lembrete_1h', nome: 'Em cima da hora', ...est('lembrete_1h', h1) }],
+          manual: manual ? { estado: 'enviada', quando: manual.criadoEm } : null,
+        }
+      })
+    },
+    async lembrar(aid) {
+      const a = banco.agendamentos.find((x) => x.id === aid)
+      if (!a) throw new Error('Agendamento não encontrado')
+      const c = cliente(a.clienteId)!
+      if (c.telefone.startsWith('balcao')) throw new Error('Esse cliente não tem WhatsApp cadastrado')
+      msg(c.telefone, 'lembrete_manual', modelo('lembrete_24h', varsAg(a), true)!, a.id)
+      salvar()
+    },
     async encaixe(d) {
       const sv = servico(d.servicoId)
       if (!horariosDo(d.profissionalId, d.data, sv.duracao, new Date(0)).includes(d.hora)) throw new Error('Horário ocupado para esse profissional')
@@ -396,21 +528,6 @@ ${c.nome} · ${sv.nome}
       }).sort((a, b) => (b.ultimaVisita ?? '').localeCompare(a.ultimaVisita ?? ''))
     },
     async mensagens(status = 'todas') { return banco.mensagens.filter((m) => status === 'todas' || (status === 'falharam') === (m.status === 'erro')).slice(0, 100) },
-    async fila() {
-      // previsão simples dos lembretes (o modo offline não envia nada de verdade)
-      const agoraTxt = carimbo(new Date())
-      const ate = carimbo(new Date(Date.now() + 7 * 864e5))
-      const itens: ItemFila[] = []
-      for (const a of banco.agendamentos.filter((x) => x.status === 'confirmado' && x.inicio > agoraTxt && x.inicio <= ate)) {
-        const c = cliente(a.clienteId)!
-        if (c.telefone.startsWith('balcao')) continue
-        const resumo = `${servico(a.servicoId).nome} com ${nomeProf(a.profissionalId).split(' ')[0]}, ${a.inicio.slice(8, 10)}/${a.inicio.slice(5, 7)} às ${a.inicio.slice(11, 16)}`
-        const q24 = carimbo(new Date(ler(a.inicio).getTime() - 24 * 36e5)), q1 = carimbo(new Date(ler(a.inicio).getTime() - 36e5))
-        if (banco.modelos?.lembrete_24h?.ativo !== false) itens.push({ quando: q24 < agoraTxt ? agoraTxt : q24, tipo: 'lembrete_24h', nome: c.nome, telefone: c.telefone, resumo })
-        if (banco.modelos?.lembrete_1h?.ativo !== false) itens.push({ quando: q1 < agoraTxt ? agoraTxt : q1, tipo: 'lembrete_1h', nome: c.nome, telefone: c.telefone, resumo })
-      }
-      return itens.sort((x, y) => x.quando.localeCompare(y.quando)).slice(0, 150)
-    },
     async modelos() {
       return MODELOS.map((m): ModeloMsg => {
         const o = banco.modelos?.[m.chave]

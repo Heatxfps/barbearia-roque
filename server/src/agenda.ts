@@ -44,6 +44,20 @@ export function horariosDoProfissional(db: DB, profissionalId: string, data: str
   return livres
 }
 
+/** O profissional está livre de `ini` a `fim` (mesmo dia, dentro do expediente, fora do almoço, bloqueios e outros horários)? */
+export function intervaloLivre(db: DB, profissionalId: string, ini: string, fim: string, ignorarAgendamento?: string): boolean {
+  const data = ini.slice(0, 10)
+  if (fim.slice(0, 10) !== data) return false
+  const exp = db.prepare('SELECT inicio, fim, intervalo_inicio, intervalo_fim FROM expediente WHERE profissional_id = ? AND dia = ?')
+    .get(profissionalId, lerCarimbo(data).getDay()) as Expediente | undefined
+  if (!exp || ini < `${data} ${exp.inicio}` || fim > `${data} ${exp.fim}`) return false
+  if (exp.intervalo_inicio && exp.intervalo_fim && sobrepoe(ini, fim, `${data} ${exp.intervalo_inicio}`, `${data} ${exp.intervalo_fim}`)) return false
+  const ocupado = db.prepare(`SELECT 1 FROM agendamentos WHERE profissional_id = ? AND status IN ('confirmado','concluido') AND id != ? AND inicio < ? AND fim > ?`)
+    .get(profissionalId, ignorarAgendamento ?? '', fim, ini)
+  if (ocupado) return false
+  return !db.prepare('SELECT 1 FROM bloqueios WHERE profissional_id = ? AND inicio < ? AND fim > ?').get(profissionalId, fim, ini)
+}
+
 /** Horários livres para um profissional ou para "qualquer" (união de todos). */
 export function horariosLivres(db: DB, profissionalId: string, data: string, duracao: number): string[] {
   const ids = profissionalId === 'qualquer' ? profissionaisAtivos(db) : [profissionalId]

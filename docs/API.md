@@ -41,6 +41,8 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 | GET/POST/DELETE | `/me/espera[/:id]` `{ servicoId, profissionalId, data }` | Lista de espera (só para dia sem vaga; até 3) |
 | GET/POST | `/me/pedidos` `{ itens: [{ produtoId, qtd }], observacao? }` | Pedidos da loja (retirada na barbearia) |
 | POST | `/me/pedidos/:id/cancelar` | Cancela enquanto ainda não foi separado |
+| POST | `/me/agendamentos/:id/cancelar` `{ remarcar? }` | Cancela; com `remarcar: true` não manda o comprovante (o cliente vai escolher outro horário) |
+| POST | `/me/agendamentos/:id/adiantar` | Aceita o convite "pode adiantar" |
 
 ## Painel (token do painel)
 
@@ -50,10 +52,12 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 | POST | `/admin/login/codigo` `{ desafio, codigo }` | dono | Confirma o código do WhatsApp e devolve `{ token, usuario }` |
 | GET | `/admin/eu` | todos | Usuário logado |
 | GET | `/admin/resumo?data=` | dono | Resultados financeiros do dia e do mês, ranking |
-| GET | `/admin/retorno` | todos | Clientes para chamar de volta |
-| GET | `/admin/aniversariantes` | todos | Aniversários dos próximos 7 dias |
+| GET | `/admin/retorno` | todos | Clientes para chamar de volta, com `estado` da mensagem "volte a cortar" |
+| GET | `/admin/aniversariantes` | todos | Aniversários de 3 dias atrás até 7 dias para a frente, com `estado` do parabéns e situação do `cupom` |
+| GET | `/admin/lembretes` | todos | Horários dos próximos 7 dias com o `estado` de cada lembrete (`enviada`, `falhou`, `programada`, `nao_vai`, `desligada`, `sem_whatsapp`) |
+| POST | `/admin/agendamentos/:id/lembrar` | todos | Manda o lembrete agora (no máximo 1 a cada 10 min por horário) |
 | GET | `/admin/agenda?data=&profissional=` | todos | Agendamentos e bloqueios do dia (`profissional=todos` = agenda da casa) |
-| PATCH | `/admin/agendamentos/:id` `{ status }` | todos | `concluido`, `faltou`, `cancelado` ou `confirmado` |
+| PATCH | `/admin/agendamentos/:id` `{ status }` | todos | `concluido`, `faltou`, `cancelado` ou `confirmado`. Devolve `{ adiantar }` quando o próximo cliente foi convidado a vir mais cedo |
 | POST | `/admin/agendamentos` `{ nome, telefone?, servicoId, profissionalId, data, hora }` | todos | Encaixe / cliente de balcão |
 | GET/POST/DELETE | `/admin/bloqueios` | todos | Folgas e horários travados (`profissionalId: "todos"` fecha a casa) |
 | GET | `/admin/clientes?busca=` | todos | Clientes com visitas, faltas e última visita |
@@ -67,7 +71,6 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 | PUT | `/admin/senha` `{ atual, nova }` | todos | Troca a própria senha (mínimo 8) e devolve um token novo. Barbeiro novo é obrigado a fazer isso no 1º acesso (antes disso só `/eu` e `/senha` respondem) |
 | PUT | `/admin/seguranca` `{ senha, telefone \| null }` | dono | Liga/desliga o código no WhatsApp para entrar como dono |
 | GET | `/admin/mensagens?status=todas\|enviadas\|falharam` | todos | Histórico das mensagens |
-| GET | `/admin/mensagens/fila` | todos | Previsão do que sai nos próximos 7 dias |
 | GET | `/admin/modelos` | todos | Mensagens automáticas: texto atual, texto padrão, variáveis, tempo, ligada |
 | PUT | `/admin/modelos/:chave` `{ texto?, ativo?, valor? }` | dono | Edita a mensagem (`texto: null` volta ao padrão) |
 | GET/POST/PUT/DELETE | `/admin/automacoes[/:id]` `{ nome, gatilho, valor, texto, ativo }` | dono (ler: todos) | Mensagens automáticas criadas pelo dono. Gatilhos: `antes_horario` (h), `depois_atendimento` (h), `dias_depois` (dias), `primeira_visita` (h) |
@@ -86,7 +89,12 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 - **Lembrete 24 h antes** (só se o horário foi marcado com mais de 24 h de antecedência)
 - **Lembrete 1 h antes**
 - **"Volte a cortar"**: clientes há `DIAS_RETORNO` dias sem vir e sem horário marcado (só das 10h às 19h, uma vez por visita)
-- **Aviso de cancelamento**
+- **Aviso de cancelamento**: comprovante quando o cliente cancela (não vai se ele está remarcando); texto de desculpas quando a barbearia desmarca
+- **Pode adiantar** (fila do dia): cancelamento no dia, falta ou atendimento concluído antes do previsto liberam a agenda → o próximo cliente daquele barbeiro (com horário nas próximas 4 h) recebe o convite com o link `/#adiantar/ID`. Um convite por vez por barbeiro, vale 20 min; sem resposta, passa para o seguinte; quem aceita libera o horário antigo e o próximo é convidado. Rotas abertas: `GET/POST /api/adiantar/:id`
+- **Sentimos sua falta**: quando o barbeiro marca "faltou"
+- **Cupom vencendo**: X dias antes de o cupom de aniversário vencer, se não foi usado e não há horário marcado
+- **Lembrete de retirada**: pedido separado e não retirado depois de X dias
+- **Avaliação baixa**: nota de 3 estrelas ou menos avisa o WhatsApp da barbearia na hora
 - **Convite para avaliar**: 1 h depois do atendimento concluído (das 9h às 21h), link `/#avaliar/ID`
 - **Aniversário**: no dia (a partir das 9h), cria o cupom (% em Ajustes, vale `DIAS_CUPOM` = 30 dias) e avisa; o desconto entra sozinho no próximo agendamento
 - **Lista de espera**: quando abre vaga num dia, avisa o primeiro da fila; se em 30 min a vaga continuar livre, avisa o próximo

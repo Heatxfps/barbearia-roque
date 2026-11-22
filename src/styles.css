@@ -853,3 +853,69 @@ body { font-variant-numeric: lining-nums; }
 @media (min-width: 1100px) { .fluxo__etapa { flex: 0 0 220px; width: 220px; } }
 .painel2__conteudo { width: 100%; }
 .fila-item > div { display: flex; flex-direction: column; gap: 2px; }
+
+/* =========================================================
+   mensagens: raias (cliente, loja, equipe)
+   ========================================================= */
+.raias-seletor { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.raia-botao {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 16px; text-align: left; min-width: 0;
+  background: var(--superficie); border: 1px solid var(--linha); color: var(--suave); transition: border-color .15s, background .15s, color .15s;
+}
+.raia-botao span { display: flex; flex-direction: column; min-width: 0; }
+.raia-botao strong { color: var(--texto); font-size: 15px; }
+.raia-botao small { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.raia-botao:hover { border-color: var(--filete); }
+.raia-botao.ativo { border-color: var(--cobre); background: linear-gradient(135deg, rgba(200,147,90,.18), rgba(200,147,90,.04)); color: var(--cobre-claro); }
+.raia { display: flex; flex-direction: column; gap: 12px; }
+.raia__cabeca { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.raia__cabeca h2 { margin: 0 0 2px; }
+.raia__legenda { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.raia__legenda .badge { display: inline-flex; align-items: center; gap: 5px; }
+.raia--loja .fluxo__num { background: var(--cobre-claro); }
+.raia--equipe .fluxo { background: radial-gradient(circle, rgba(95,191,127,.08) 1px, transparent 1.3px) 0 0 / 18px 18px, #0b0d0b; }
+.raia--equipe .fluxo__num { background: var(--verde); color: #08140c; }
+/* etapas soltas (equipe): sem setas entre elas */
+.fluxo--solto .fluxo__etapa::after, .fluxo--solto .fluxo__etapa::before { display: none; }
+@media (max-width: 560px) {
+  .raia-botao { flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px; }
+  .raia-botao small { white-space: normal; }
+}
+@media (min-width: 1100px) {
+  .fluxo__etapa { flex: 1 0 190px; max-width: 260px; }
+  .fluxo__etapa--centro { flex: 0 0 130px; }
+  .fluxo--solto .fluxo__etapa { max-width: none; }
+}
+
+/* =========================================================
+   clientes: lembretes e situação das mensagens
+   ========================================================= */
+.ponto-alerta { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: #e0525a; vertical-align: middle; }
+.status-msg {
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 999px; font-size: 11.5px; white-space: nowrap;
+  color: var(--suave); background: rgba(236,230,218,.05); border: 1px solid var(--linha); max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.status-msg--ok { color: #7fd39b; background: rgba(95,191,127,.1); border-color: rgba(95,191,127,.25); }
+.status-msg--erro { color: #ff8a8f; background: rgba(211,49,58,.12); border-color: rgba(211,49,58,.35); }
+.status-msg--prog { color: var(--cobre-claro); background: rgba(200,147,90,.1); border-color: rgba(200,147,90,.3); }
+.item--status { align-items: center; }
+.status-col { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+.lembretes { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+.lembrete { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: var(--superficie); border: 1px solid var(--linha); min-width: 0; }
+.lembrete--falhou { border-color: rgba(211,49,58,.45); }
+.lembrete__topo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lembrete__hora { font-family: var(--fonte-ed); font-size: 22px; color: var(--cobre-claro); font-variant-numeric: tabular-nums; }
+.lembrete__quem { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.lembrete__quem strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lembrete__msgs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lembrete__msgs li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lembrete__acoes { display: flex; gap: 6px; flex-wrap: wrap; }
+.lembrete__acoes .chip { display: inline-flex; align-items: center; gap: 5px; }
+@media (max-width: 480px) { .item--status { flex-wrap: wrap; } .status-col { align-items: flex-start; } }
+
+/* convite "pode adiantar" (app do cliente) */
+.adiantar__troca { display: flex; align-items: center; gap: 14px; font-family: var(--fonte-ed); color: var(--cobre-claro); margin: 6px 0; }
+.adiantar__antes { font-size: 26px; color: var(--suave); text-decoration: line-through; text-decoration-color: rgba(236,230,218,.35); }
+.adiantar__depois { font-size: 44px; color: var(--ouro, var(--cobre-claro)); }
+.adiantar__aviso { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin: 4px 0; border-radius: 12px;
+  background: rgba(200,147,90,.12); border: 1px solid var(--filete); font-size: 14px; }

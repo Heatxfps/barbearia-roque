@@ -9,19 +9,20 @@ import Perfil from './screens/Perfil'
 import Noivo from './screens/Noivo'
 import Loja from './screens/Loja'
 import Avaliar from './screens/Avaliar'
+import Adiantar from './screens/Adiantar'
 import { ProvedorApp, useApp } from './contexto'
 
 export type Aba = 'inicio' | 'agenda' | 'fidelidade' | 'perfil'
 export type OpcoesAgendar = { servicoId?: string; profissionalId?: string }
 export type Navegar = (destino: Aba | 'agendar' | 'noivo' | 'loja', opcoes?: OpcoesAgendar) => void
 
-type Modal = null | ({ tipo: 'agendar' } & OpcoesAgendar) | { tipo: 'noivo' } | { tipo: 'loja' } | { tipo: 'avaliar'; id: string }
+type Modal = null | ({ tipo: 'agendar' } & OpcoesAgendar) | { tipo: 'noivo' } | { tipo: 'loja' } | { tipo: 'avaliar'; id: string } | { tipo: 'adiantar'; id: string }
 
-/** abre direto pelo endereço: /#avaliar/ID (link do WhatsApp). O painel da equipe fica em painel.html, fora do app. */
+/** abre direto pelo endereço: /#avaliar/ID e /#adiantar/ID (links do WhatsApp). O painel da equipe fica em painel.html, fora do app. */
 function modalDoEndereco(): Modal {
   if (location.hash === '#painel') { location.replace('./painel.html'); return null } // link antigo
-  const m = /^#avaliar\/([\w-]{6,40})$/.exec(location.hash)
-  return m ? { tipo: 'avaliar', id: m[1] } : null
+  const m = /^#(avaliar|adiantar)\/([\w-]{6,40})$/.exec(location.hash)
+  return m ? { tipo: m[1] as 'avaliar' | 'adiantar', id: m[2] } : null
 }
 
 const lerSessao = (k: string) => { try { return sessionStorage.getItem(k) } catch { return null } }
@@ -82,6 +83,8 @@ function Conteudo() {
         <Loja navegar={navegar} />
       ) : modal?.tipo === 'avaliar' ? (
         <Avaliar id={modal.id} navegar={navegar} />
+      ) : modal?.tipo === 'adiantar' ? (
+        <Adiantar id={modal.id} navegar={navegar} />
       ) : (
         <>
           <main className="conteudo" key={aba}>

@@ -17,7 +17,8 @@ import type { DB } from '../db.ts'
 import { conferirSenha, hashSenha, lerBarbearia, novoId, transacao } from '../db.ts'
 import { exigirAdmin, exigirDono, type Sessao } from '../auth.ts'
 import { agora, carimbo, dataIso, dataValida, horaValida, lerCarimbo, normalizarTelefone, somarMin } from '../tempo.ts'
-import { ErroNegocio, cancelarAgendamento, criarAgendamento } from '../servicos-agendamento.ts'
+import { ErroNegocio, criarAgendamento, lembrarAgora, marcarStatus } from '../servicos-agendamento.ts'
+import { aniversariantes, lembretes, retornoComEstado } from '../status-mensagens.ts'
 import { clientesParaRetorno } from '../jobs.ts'
 
 type Admin = Extract<Sessao, { tipo: 'admin' }>
@@ -100,59 +101,12 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       return db.prepare(`SELECT id, telefone, tipo, texto, status, erro, criado_em AS criadoEm FROM mensagens ${f} ORDER BY criado_em DESC, rowid DESC LIMIT 100`).all()
     })
 
-    /** O que o app vai mandar nos próximos 7 dias (previsão, pode mudar se o cliente remarcar) */
-    r.get('/mensagens/fila', async () => {
-      const agoraD = agora()
-      const agoraTxt = carimbo(agoraD)
-      const ate = carimbo(somarMin(agoraD, 7 * 1440))
-      type Item = { quando: string; tipo: string; nome: string; telefone: string; resumo: string }
-      const fila: Item[] = []
-      const ligado = (chave: string) => (db.prepare('SELECT ativo FROM modelos WHERE chave = ?').get(chave) as { ativo: number } | undefined)?.ativo !== 0
-      const ags = db.prepare(`SELECT a.id, a.inicio, a.fim, a.criado_em, a.lembrete_24h, a.lembrete_1h, c.nome, c.telefone, s.nome AS servico, p.nome AS profissional
-                              FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN servicos s ON s.id = a.servico_id JOIN profissionais p ON p.id = a.profissional_id
-                              WHERE a.status = 'confirmado' AND a.inicio > ? AND a.inicio <= ? AND c.telefone NOT LIKE 'balcao-%'`).all(agoraTxt, ate) as
-        { id: string; inicio: string; criado_em: string; lembrete_24h: number; lembrete_1h: number; nome: string; telefone: string; servico: string; profissional: string }[]
-      const h24 = tempoDe(db, 'lembrete_24h') * 60, h1 = tempoDe(db, 'lembrete_1h') * 60
-      for (const a of ags) {
-        const resumo = `${a.servico} com ${a.profissional.split(' ')[0]}, ${a.inicio.slice(8, 10)}/${a.inicio.slice(5, 7)} às ${a.inicio.slice(11, 16)}`
-        const q24 = carimbo(somarMin(lerCarimbo(a.inicio), -h24))
-        if (ligado('lembrete_24h') && !a.lembrete_24h && a.criado_em <= q24) fila.push({ quando: q24 < agoraTxt ? agoraTxt : q24, tipo: 'lembrete_24h', nome: a.nome, telefone: a.telefone, resumo })
-        const q1 = carimbo(somarMin(lerCarimbo(a.inicio), -h1))
-        if (ligado('lembrete_1h') && !a.lembrete_1h && a.criado_em <= carimbo(somarMin(lerCarimbo(a.inicio), -(h1 + 30)))) fila.push({ quando: q1 < agoraTxt ? agoraTxt : q1, tipo: 'lembrete_1h', nome: a.nome, telefone: a.telefone, resumo })
-      }
-      // automações "antes do horário"
-      for (const au of db.prepare("SELECT id, nome, valor FROM automacoes WHERE ativo = 1 AND gatilho = 'antes_horario'").all() as { id: string; nome: string; valor: number }[])
-        for (const a of ags) {
-          const q = carimbo(somarMin(lerCarimbo(a.inicio), -au.valor * 60))
-          if (q > agoraTxt && a.criado_em <= q && !db.prepare('SELECT 1 FROM automacao_envios WHERE automacao_id = ? AND ref = ?').get(au.id, a.id))
-            fila.push({ quando: q, tipo: 'automacao', nome: a.nome, telefone: a.telefone, resumo: au.nome })
-        }
-      // avaliação de quem já foi atendido
-      if (ligado('avaliacao')) {
-        const hv = tempoDe(db, 'avaliacao') * 60
-        for (const a of db.prepare(`SELECT a.fim, c.nome, c.telefone, p.nome AS profissional FROM agendamentos a JOIN clientes c ON c.id = a.cliente_id JOIN profissionais p ON p.id = a.profissional_id
-                                    WHERE a.status = 'concluido' AND a.avaliacao_enviada = 0 AND a.fim > ? AND c.telefone NOT LIKE 'balcao-%'
-                                      AND NOT EXISTS (SELECT 1 FROM avaliacoes v WHERE v.agendamento_id = a.id)`).all(carimbo(somarMin(agoraD, -48 * 60))) as { fim: string; nome: string; telefone: string; profissional: string }[]) {
-          const q = carimbo(somarMin(lerCarimbo(a.fim), hv))
-          fila.push({ quando: q < agoraTxt ? agoraTxt : q, tipo: 'avaliacao', nome: a.nome, telefone: a.telefone, resumo: `atendimento com ${a.profissional.split(' ')[0]}` })
-        }
-      }
-      // aniversários da semana
-      const b = lerBarbearia(db)
-      if (ligado('aniversario') && Number(b.desconto_aniversario ?? 15) > 0) {
-        for (let i = 0; i < 7; i++) {
-          const d = new Date(agoraD); d.setDate(d.getDate() + i); d.setHours(9, 0, 0, 0)
-          for (const c of db.prepare('SELECT nome, telefone, aniversario_ano FROM clientes WHERE aniversario = ?').all(dataIso(d).slice(5)) as { nome: string; telefone: string; aniversario_ano: number | null }[])
-            if ((c.aniversario_ano ?? 0) < d.getFullYear()) fila.push({ quando: carimbo(d < agoraD ? agoraD : d), tipo: 'aniversario', nome: c.nome, telefone: c.telefone, resumo: `cupom de ${b.desconto_aniversario ?? 15}%` })
-        }
-      }
-      // volte a cortar (próxima janela das 10h às 19h)
-      if (ligado('retorno')) {
-        const jan = new Date(agoraD)
-        if (jan.getHours() >= 19) { jan.setDate(jan.getDate() + 1); jan.setHours(10, 0, 0, 0) } else if (jan.getHours() < 10) jan.setHours(10, 0, 0, 0)
-        for (const c of clientesParaRetorno(db).filter((c) => !c.avisado)) fila.push({ quando: carimbo(jan), tipo: 'retorno', nome: c.nome, telefone: c.telefone, resumo: `${c.dias} dias sem vir` })
-      }
-      return fila.sort((x, y) => x.quando.localeCompare(y.quando)).slice(0, 150)
+    /** Clientes → Lembretes: próximos horários e a situação de cada lembrete */
+    r.get('/lembretes', async () => lembretes(db))
+    r.post('/agendamentos/:id/lembrar', async (req) => {
+      const { id } = z.object({ id: z.string() }).parse(req.params)
+      await lembrarAgora(db, id)
+      return { ok: true }
     })
 
     /** Modelos das mensagens e automações (a equipe vê; só o dono edita) */
@@ -160,16 +114,10 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
     r.get('/automacoes', async () => (db.prepare('SELECT * FROM automacoes ORDER BY criado_em').all() as { ativo: number }[]).map((a) => ({ ...a, ativo: !!a.ativo })))
 
     /** Clientes sumidos (para chamar de volta): todos da equipe podem ver */
-    r.get('/retorno', async () => clientesParaRetorno(db).slice(0, 50))
+    r.get('/retorno', async () => retornoComEstado(db))
 
-    /** Aniversariantes dos próximos 7 dias */
-    r.get('/aniversariantes', async () => {
-      const hoje = agora(); hoje.setHours(0, 0, 0, 0)
-      const dias = Array.from({ length: 7 }, (_, i) => { const d = new Date(hoje); d.setDate(d.getDate() + i); return dataIso(d).slice(5) })
-      const lista = db.prepare(`SELECT id, nome, telefone, aniversario FROM clientes WHERE aniversario IN (${dias.map(() => '?').join(',')})`).all(...dias) as
-        { id: string; nome: string; telefone: string; aniversario: string }[]
-      return lista.map((c) => ({ ...c, emDias: dias.indexOf(c.aniversario) })).sort((a, b) => a.emDias - b.emDias)
-    })
+    /** Aniversariantes (3 dias atrás até 7 dias para a frente), com a situação do parabéns e do cupom */
+    r.get('/aniversariantes', async () => aniversariantes(db))
 
     r.get('/resumo', { onRequest: exigirDono }, async (req) => {
       const { data } = z.object({ data: z.string().refine(dataValida).optional() }).parse(req.query)
@@ -214,10 +162,11 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       const prof = filtroProf(req, q.profissional)
       const lista = db.prepare(`SELECT a.id, a.inicio, a.fim, a.preco, a.desconto, a.status, a.origem, a.servico_id AS servicoId, s.nome AS servico,
                                        a.profissional_id AS profissionalId, p.nome AS profissional, c.nome AS cliente, c.telefone,
+                                       CASE WHEN a.adiantar_ate > ? THEN a.adiantar_para END AS adiantarPara,
                                        (SELECT COUNT(*) FROM agendamentos x WHERE x.cliente_id = a.cliente_id AND x.status = 'concluido') AS visitas
                                 FROM agendamentos a JOIN servicos s ON s.id = a.servico_id JOIN profissionais p ON p.id = a.profissional_id JOIN clientes c ON c.id = a.cliente_id
                                 WHERE substr(a.inicio,1,10) = ? ${prof ? 'AND a.profissional_id = ?' : ''} ORDER BY a.inicio`)
-        .all(...(prof ? [q.data, prof] : [q.data]))
+        .all(...(prof ? [carimbo(agora()), q.data, prof] : [carimbo(agora()), q.data]))
       const bloqueios = db.prepare(`SELECT b.id, b.inicio, b.fim, b.motivo, b.profissional_id AS profissionalId, p.nome AS profissional
                                     FROM bloqueios b JOIN profissionais p ON p.id = b.profissional_id
                                     WHERE b.inicio < ? AND b.fim > ? ${prof ? 'AND b.profissional_id = ?' : ''} ORDER BY b.inicio`)
@@ -233,11 +182,9 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
     r.patch('/agendamentos/:id', async (req) => {
       const { id } = z.object({ id: z.string() }).parse(req.params)
       const { status } = z.object({ status: z.enum(['confirmado', 'concluido', 'faltou', 'cancelado']) }).parse(req.body)
-      const a = db.prepare('SELECT profissional_id FROM agendamentos WHERE id = ?').get(id) as { profissional_id: string } | undefined
-      if (!a) throw new ErroNegocio('Agendamento não encontrado', 404)
-      if (status === 'cancelado') cancelarAgendamento(db, id)
-      else db.prepare('UPDATE agendamentos SET status = ? WHERE id = ?').run(status, id)
-      return { ok: true }
+      // concluído antes da hora, falta ou cancelamento no dia: o próximo cliente pode ser convidado a adiantar
+      const adiantar = marcarStatus(db, id, status)
+      return { ok: true, adiantar }
     })
 
     /** encaixe / cliente que chegou no balcão */
@@ -348,8 +295,9 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
         { status: string; nome: string; telefone: string } | undefined
       if (!o) throw new ErroNegocio('Pedido não encontrado', 404)
       db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(status, id)
+      if (status === 'separado' && o.status !== 'separado') db.prepare('UPDATE pedidos SET separado_em = ? WHERE id = ?').run(carimbo(agora()), id)
       const txt = status === 'separado' && o.status === 'novo' ? montar(db, 'pedido_separado', { nome: o.nome.split(' ')[0] }) : null
-      if (txt) void enviarWhatsApp(db, o.telefone, 'pedido_separado', txt)
+      if (txt) void enviarWhatsApp(db, o.telefone, 'pedido_separado', txt, id)
       return { ok: true }
     })
 

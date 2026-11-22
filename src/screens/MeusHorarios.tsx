@@ -42,7 +42,7 @@ export default function MeusHorarios({ navegar }: { navegar: Navegar }) {
     const pergunta = remarcar ? 'Remarcar? O horário atual será liberado e você escolhe um novo.' : 'Cancelar este horário? Ele fica livre para outro cliente.'
     if (!(await confirmar(pergunta, { botao: remarcar ? 'Remarcar' : 'Cancelar horário', perigo: !remarcar }))) return
     try {
-      await api.cancelar(a.id)
+      await api.cancelar(a.id, remarcar)
       if (remarcar) navegar('agendar', { servicoId: a.servicoId, profissionalId: a.profissionalId })
       else { avisar('Horário cancelado'); carregar(); recarregar() }
     } catch (e) { avisar((e as Error).message, 'erro') }
@@ -67,6 +67,14 @@ export default function MeusHorarios({ navegar }: { navegar: Navegar }) {
           <p className="sobretitulo capitalizar">{dataLonga(a.inicio)}</p>
           <h3>{hora(a.inicio)} · {a.servico}</h3>
           <p className="suave">com {a.profissional} · {moeda(a.preco)}</p>
+          {a.adiantarPara && (
+            <div className="adiantar__aviso">
+              <span>⏩ Abriu um espaço: dá para vir às <strong>{hora(a.adiantarPara)}</strong>.</span>
+              <button className="botao botao--principal pequeno" onClick={async () => {
+                try { const r = await api.adiantar(a.id); avisar(`Fechado! Te esperamos às ${hora(r.inicio)}`); carregar() } catch (e) { avisar((e as Error).message, 'erro'); carregar() }
+              }}>Adiantar</button>
+            </div>
+          )}
           <div className="acoes">
             <button className="botao botao--fantasma pequeno" onClick={() => cancelar(a, true)}>Remarcar</button>
             <button className="botao botao--perigo pequeno" onClick={() => cancelar(a)}>Cancelar</button>

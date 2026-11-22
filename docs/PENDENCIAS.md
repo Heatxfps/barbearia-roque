@@ -35,6 +35,7 @@ Os dados de exemplo ficam no servidor: valores iniciais em [`server/src/db.ts`](
 - [ ] Link de avaliação do Perfil da Empresa no Google (Ajustes → A barbearia)
 - [ ] Desconto de aniversário: 15% está bom? Validade (só no dia, 7, 15 ou 30 dias)? Vale para qualquer serviço?
 - [ ] Revisar com o Luciano o texto de cada mensagem do WhatsApp (Painel → Mensagens → Fluxo)
+- [ ] "Pode adiantar": 15 min para o cliente chegar e 20 min para aceitar estão bons? Ganho mínimo de 20 min?
 
 ## Dia do Noivo
 

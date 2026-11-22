@@ -18,6 +18,7 @@ Aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, login 
 - **Dia do Noivo**: página com o vídeo do making of atrás do título e pedido de orçamento pronto no WhatsApp
 - **Loja**: o cliente reserva pomada, óleo etc. e retira (e paga) na barbearia
 - **Lista de espera**: dia lotado → entra na fila e é avisado no WhatsApp se abrir vaga
+- **Pode adiantar**: alguém desmarcou no dia, faltou ou o barbeiro terminou antes → o próximo cliente dele recebe no WhatsApp um convite para vir mais cedo (um por vez, 20 min para aceitar, um toque confirma)
 - **Avaliação** depois do atendimento (estrelas + comentário) com convite para avaliar no Google
 - **Aniversário**: cadastra o dia e ganha um desconto que entra sozinho no próximo horário
 - A Roque: fundador, horário de funcionamento, WhatsApp, Instagram e mapa
@@ -26,7 +27,8 @@ Aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, login 
 
 O painel é uma página própria: `painel.SEU-DOMINIO` na VPS, `localhost:3333/painel` no computador. Pode ser instalado no celular dos barbeiros ou num tablet do balcão como um app à parte ("Roque · Painel"). O app do cliente não tem botão nem código do painel.
 
-- **Mensagens:** canvas com a jornada do cliente (da marcação à volta); cada mensagem do WhatsApp tem texto editável com variáveis, tempo ajustável e liga/desliga, e dá para **criar mensagens automáticas novas** (antes do horário, depois do atendimento, dias depois, 1ª visita). Abas de *Próximas* (o que vai sair nos próximos 7 dias), *Enviadas* e *Falharam*
+- **Mensagens:** fluxo em três raias: **Cliente** (marcou → antes → no dia → na cadeira → depois → para voltar), **Loja** (pediu → separado → não retirou) e **Equipe** (avisos para o WhatsApp da barbearia). Cada mensagem tem texto editável com variáveis, tempo ajustável e liga/desliga, e dá para **criar mensagens automáticas novas** (antes do horário, depois do atendimento, dias depois, 1ª visita). Abas *Enviadas* e *Falharam*
+- **Clientes:** *Lembretes* (cada horário dos próximos 7 dias com a situação do lembrete da véspera e do em cima da hora, e botão **Lembrar agora**), *Chamar de volta* e *Aniversariantes*, todos com o status da mensagem (enviada, programada para quando, falhou, não vai e por quê, desligada)
 - **Fotos:** ao escolher a foto de um barbeiro ou produto, abre um enquadramento (arrastar e zoom)
 - **Seções:** *Dia a dia* (Agenda, Loja) · *Clientes* (Clientes, Avaliações, Mensagens) · *Gestão* (Resultados, Divulgação, Ajustes). Menu lateral no computador; barra inferior + "Mais" no celular
 - **Quem vê o quê:** a equipe toda vê tudo, menos **Resultados** (financeiro), que é só do dono. Em Ajustes o barbeiro só troca a própria senha

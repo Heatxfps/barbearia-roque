@@ -6,6 +6,8 @@
  *  - avaliação: 1h depois do atendimento concluído, link para dar a nota (das 9h às 21h)
  *  - aniversário: no dia, cupom de desconto automático (a partir das 9h)
  *  - lista de espera: abriu vaga num dia lotado → avisa o primeiro da fila; 30 min depois, o próximo
+ *  - fila do dia: convite "pode adiantar" que venceu passa para o próximo cliente (fila.ts)
+ *  - cupom de aniversário perto de vencer, pedido da loja separado e não retirado
  */
 import type { DB } from './db.ts'
 import { lerBarbearia, novoId } from './db.ts'
@@ -17,6 +19,7 @@ import { enviarWhatsApp } from './whatsapp.ts'
 import { montar, tempoDe, varsAgendamento } from './mensagens.ts'
 import { preencher } from '../../shared/modelos.ts'
 import { dataExtenso } from './tempo.ts'
+import { vencerConvites } from './fila.ts'
 
 type Linha = { id: string; inicio: string; criado_em: string }
 
@@ -25,12 +28,14 @@ export function clientesParaRetorno(db: DB) {
   const limite = carimbo(somarMin(agora(), -dias * 24 * 60))
   const agoraTxt = carimbo(agora())
   const linhas = db.prepare(`
-    SELECT c.id, c.nome, c.telefone, c.aviso_retorno_em AS avisadoEm, MAX(a.inicio) AS ultimaVisita
+    SELECT c.id, c.nome, c.telefone, c.aviso_retorno_em AS avisadoEm, MAX(a.inicio) AS ultimaVisita,
+           (SELECT p.nome FROM agendamentos u JOIN profissionais p ON p.id = u.profissional_id
+             WHERE u.cliente_id = c.id AND u.status = 'concluido' ORDER BY u.inicio DESC LIMIT 1) AS barbeiro
     FROM clientes c JOIN agendamentos a ON a.cliente_id = c.id AND a.status = 'concluido'
     WHERE c.telefone NOT LIKE 'balcao-%'
       AND NOT EXISTS (SELECT 1 FROM agendamentos f WHERE f.cliente_id = c.id AND f.status = 'confirmado' AND f.inicio > ?)
     GROUP BY c.id HAVING ultimaVisita <= ? ORDER BY ultimaVisita`).all(agoraTxt, limite) as
-    { id: string; nome: string; telefone: string; avisadoEm: string | null; ultimaVisita: string }[]
+    { id: string; nome: string; telefone: string; avisadoEm: string | null; ultimaVisita: string; barbeiro: string }[]
   return linhas.map((l) => ({
     ...l,
     dias: Math.floor((agora().getTime() - lerCarimbo(l.ultimaVisita).getTime()) / 86_400_000),
@@ -64,6 +69,9 @@ export async function rodarTarefas(db: DB) {
   }
 
   await rodarAutomacoes(db)
+  vencerConvites(db)
+  await cupomVencendo(db)
+  await pedidoParado(db)
 
   await convidarAvaliacao(db)
   await parabenizar(db)
@@ -74,8 +82,8 @@ export async function rodarTarefas(db: DB) {
   if (h >= 10 && h < 19) {
     for (const c of clientesParaRetorno(db).filter((c) => !c.avisado)) {
       db.prepare('UPDATE clientes SET aviso_retorno_em = ? WHERE id = ?').run(agoraTxt, c.id)
-      const texto = montar(db, 'retorno', { nome: c.nome.split(' ')[0], dias: c.dias })
-      if (texto) await enviarWhatsApp(db, c.telefone, 'retorno', texto)
+      const texto = montar(db, 'retorno', { nome: c.nome.split(' ')[0], dias: c.dias, barbeiro: (c.barbeiro ?? 'a gente').split(' ')[0] })
+      if (texto) await enviarWhatsApp(db, c.telefone, 'retorno', texto, c.id)
     }
   }
 }
@@ -94,7 +102,7 @@ async function convidarAvaliacao(db: DB) {
   for (const a of lista) {
     db.prepare('UPDATE agendamentos SET avaliacao_enviada = 1 WHERE id = ?').run(a.id)
     const texto = montar(db, 'avaliacao', { nome: a.nome.split(' ')[0], barbeiro: a.profissional, link: `${config.urlApp}/#avaliar/${a.id}` })
-    if (texto) await enviarWhatsApp(db, a.telefone, 'avaliacao', texto)
+    if (texto) await enviarWhatsApp(db, a.telefone, 'avaliacao', texto, a.id)
   }
 }
 
@@ -118,7 +126,7 @@ async function parabenizar(db: DB) {
     db.prepare('INSERT INTO cupons (id, cliente_id, motivo, desconto_pct, valido_ate, criado_em) VALUES (?, ?, ?, ?, ?, ?)')
       .run(novoId(), c.id, 'aniversario', pct, validoAte, carimbo(agoraD))
     const texto = montar(db, 'aniversario', { nome: c.nome.split(' ')[0], desconto: pct, validade: validoAte === hoje ? 'hoje' : `${validoAte.slice(8, 10)}/${validoAte.slice(5, 7)}` })
-    if (texto) await enviarWhatsApp(db, c.telefone, 'aniversario', texto)
+    if (texto) await enviarWhatsApp(db, c.telefone, 'aniversario', texto, c.id)
   }
 }
 
@@ -143,7 +151,7 @@ async function avisarEspera(db: DB) {
     vezDe.add(e.data)
     db.prepare('UPDATE espera SET avisado_em = ? WHERE id = ?').run(carimbo(agoraD), e.id)
     const texto = montar(db, 'espera', { nome: e.nome.split(' ')[0], servico: e.servico, data: dataExtenso(e.data), horarios: horas.slice(0, 4).join(', ') + (horas.length > 4 ? '…' : '') })
-    if (texto) await enviarWhatsApp(db, e.telefone, 'espera', texto)
+    if (texto) await enviarWhatsApp(db, e.telefone, 'espera', texto, e.id)
   }
 }
 
@@ -178,8 +186,45 @@ async function rodarAutomacoes(db: DB) {
       db.prepare('INSERT OR IGNORE INTO automacao_envios (automacao_id, ref, enviado_em) VALUES (?, ?, ?)').run(au.id, a.id, agoraTxt)
       const b = lerBarbearia(db)
       const texto = preencher(au.texto, { barbearia: b.nome, endereco: b.endereco, cidade: (b.cidade ?? '').split(' - ')[0], link: config.urlApp, ...varsAgendamento(a) })
-      await enviarWhatsApp(db, a.telefone, 'automacao', texto)
+      await enviarWhatsApp(db, a.telefone, 'automacao', texto, a.id)
     }
+  }
+}
+
+/** Cupom de aniversário perto de vencer: quem não usou e não tem horário marcado (uma vez por cupom). */
+async function cupomVencendo(db: DB) {
+  const agoraD = agora()
+  if (agoraD.getHours() < 10 || agoraD.getHours() >= 19) return
+  const dias = tempoDe(db, 'cupom_vencendo')
+  const hoje = dataIso(agoraD)
+  const ate = new Date(agoraD); ate.setDate(ate.getDate() + dias)
+  const lista = db.prepare(`SELECT u.id, u.desconto_pct, u.valido_ate, u.criado_em, c.id AS cliente, c.nome, c.telefone FROM cupons u JOIN clientes c ON c.id = u.cliente_id
+                            WHERE u.agendamento_id IS NULL AND u.aviso_vencendo = 0 AND u.valido_ate >= ? AND u.valido_ate <= ?
+                              AND NOT EXISTS (SELECT 1 FROM agendamentos f WHERE f.cliente_id = c.id AND f.status = 'confirmado' AND f.inicio > ?)`)
+    .all(hoje, dataIso(ate), carimbo(agoraD)) as { id: string; desconto_pct: number; valido_ate: string; criado_em: string; cliente: string; nome: string; telefone: string }[]
+  for (const u of lista) {
+    db.prepare('UPDATE cupons SET aviso_vencendo = 1 WHERE id = ?').run(u.id)
+    // cupom curto (ex.: vale só no dia ou 1 semana com aviso de 7 dias): o parabéns já avisou
+    const duracao = (lerCarimbo(u.valido_ate).getTime() - lerCarimbo(u.criado_em.slice(0, 10)).getTime()) / 86_400_000
+    if (duracao <= dias) continue
+    const validade = u.valido_ate === hoje ? 'hoje' : `em ${u.valido_ate.slice(8, 10)}/${u.valido_ate.slice(5, 7)}`
+    const texto = montar(db, 'cupom_vencendo', { nome: u.nome.split(' ')[0], desconto: u.desconto_pct, validade })
+    if (texto) await enviarWhatsApp(db, u.telefone, 'cupom_vencendo', texto, u.cliente)
+  }
+}
+
+/** Pedido separado e não retirado depois de X dias: um lembrete. */
+async function pedidoParado(db: DB) {
+  const agoraD = agora()
+  if (agoraD.getHours() < 10 || agoraD.getHours() >= 19) return
+  const limite = carimbo(somarMin(agoraD, -tempoDe(db, 'pedido_parado') * 1440))
+  const lista = db.prepare(`SELECT o.id, c.nome, c.telefone FROM pedidos o JOIN clientes c ON c.id = o.cliente_id
+                            WHERE o.status = 'separado' AND o.lembrete_enviado = 0 AND o.separado_em IS NOT NULL AND o.separado_em <= ?`).all(limite) as { id: string; nome: string; telefone: string }[]
+  for (const o of lista) {
+    db.prepare('UPDATE pedidos SET lembrete_enviado = 1 WHERE id = ?').run(o.id)
+    const itens = (db.prepare('SELECT nome, qtd FROM pedido_itens WHERE pedido_id = ?').all(o.id) as { nome: string; qtd: number }[]).map((i) => `• ${i.qtd}× ${i.nome}`).join('\n')
+    const texto = montar(db, 'pedido_parado', { nome: o.nome.split(' ')[0], itens })
+    if (texto) await enviarWhatsApp(db, o.telefone, 'pedido_parado', texto, o.id)
   }
 }
 
