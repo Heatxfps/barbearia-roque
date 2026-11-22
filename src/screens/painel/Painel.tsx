@@ -4,7 +4,8 @@
  * A equipe toda vê tudo, menos os Resultados (financeiro), que são só do dono.
  * Ajustes: o dono configura tudo; o barbeiro só troca a própria senha.
  */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useDialogo } from '../../components/useDialogo'
 import Icone from '../../components/Icone'
 import { api, type UsuarioPainel } from '../../api'
 import { useApp } from '../../contexto'
@@ -121,26 +122,37 @@ function Area({ usuario, sair }: { usuario: UsuarioPainel; sair: () => void }) {
         {PRINCIPAIS.map((id) => {
           const i = itens.find((x) => x.id === id)!
           return (
-            <button key={id} className={`aba ${secao === id ? 'aba--ativa' : ''}`} onClick={() => ir(id)}>
+            <button key={id} className={`aba ${secao === id ? 'aba--ativa' : ''}`} onClick={() => ir(id)} aria-current={secao === id ? 'page' : undefined}>
               <Icone nome={i.icone} /><span>{i.rotulo}</span>
             </button>
           )
         })}
-        <button className={`aba ${!PRINCIPAIS.includes(secao) ? 'aba--ativa' : ''}`} onClick={() => setMais(true)}>
+        <button className={`aba ${!PRINCIPAIS.includes(secao) ? 'aba--ativa' : ''}`} onClick={() => setMais(true)} aria-haspopup="dialog" aria-expanded={mais}>
           <Icone nome="menu" /><span>Mais</span>
         </button>
       </nav>
 
       {mais && (
-        <div className="confirmar" role="presentation" onClick={() => setMais(false)}>
-          <div className="painel2__mais" role="dialog" aria-label="Mais seções" onClick={(e) => e.stopPropagation()}>
-            {itens.filter((i) => !PRINCIPAIS.includes(i.id)).map((i) => (
-              <button key={i.id} className={`painel2__item ${secao === i.id ? 'ativo' : ''}`} onClick={() => ir(i.id)}><Icone nome={i.icone} tam={19} /> {i.rotulo}</button>
-            ))}
-            <button className="painel2__item painel2__sair" onClick={() => { setMais(false); pedirSaida() }}><Icone nome="voltar" tam={19} /> Sair</button>
-          </div>
-        </div>
+        <MenuMais fechar={() => setMais(false)}>
+          {itens.filter((i) => !PRINCIPAIS.includes(i.id)).map((i) => (
+            <button key={i.id} className={`painel2__item ${secao === i.id ? 'ativo' : ''}`} aria-current={secao === i.id ? 'page' : undefined} onClick={() => ir(i.id)}><Icone nome={i.icone} tam={19} /> {i.rotulo}</button>
+          ))}
+          <button className="painel2__item painel2__sair" onClick={() => { setMais(false); pedirSaida() }}><Icone nome="voltar" tam={19} /> Sair</button>
+        </MenuMais>
       )}
+    </div>
+  )
+}
+
+/** Menu "Mais" do celular (folha que sobe de baixo) */
+function MenuMais({ fechar, children }: { fechar: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useDialogo(ref, fechar)
+  return (
+    <div className="confirmar" role="presentation" onClick={fechar}>
+      <div ref={ref} className="painel2__mais" role="dialog" aria-modal="true" aria-label="Mais seções" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
     </div>
   )
 }

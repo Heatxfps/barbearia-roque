@@ -113,7 +113,7 @@ export default function MeusHorarios({ navegar }: { navegar: Navegar }) {
             <div><strong>{a.servico}</strong><span className="suave capitalizar">{dataLonga(a.inicio)} · {hora(a.inicio)} · {a.profissional}</span></div>
             {a.status === 'concluido' && !a.avaliacao
               ? <a className="chip chip--ok" href={`#avaliar/${a.id}`}>★ Avaliar</a>
-              : <span className={`badge ${a.status !== 'concluido' ? 'badge--off' : ''}`}>{a.avaliacao ? '★'.repeat(a.avaliacao) : ROTULO[a.status] ?? a.status}</span>}
+              : <span className={`badge ${a.status !== 'concluido' ? 'badge--off' : ''}`} aria-label={a.avaliacao ? `Você deu ${a.avaliacao} de 5` : undefined}>{a.avaliacao ? '★'.repeat(a.avaliacao) : ROTULO[a.status] ?? a.status}</span>}
           </div>
         ))}
       </div>

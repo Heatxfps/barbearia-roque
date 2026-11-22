@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Icone from '../../components/Icone'
 import { api, type Automacao, type Mensagem, type ModeloMsg, type UsuarioPainel } from '../../api'
 import { useApp } from '../../contexto'
+import { useDialogo } from '../../components/useDialogo'
 import { dataCurta, formatarTelefone, hora } from '../../util'
 import { GATILHOS, VARIAVEIS, VARIAVEIS_AUTOMACAO, exemplo, type Gatilho, type Grupo, type Raia } from '../../../shared/modelos'
 
@@ -316,13 +317,11 @@ function EditorAutomacao({ inicial, gatilhoInicial, dono, fechar, salvo }: { ini
 }
 
 function Gaveta({ titulo, fechar, children }: { titulo: string; fechar: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && fechar()
-    window.addEventListener('keydown', esc); return () => window.removeEventListener('keydown', esc)
-  }, [fechar])
+  const ref = useRef<HTMLElement>(null)
+  useDialogo(ref, fechar)
   return (
     <div className="confirmar gaveta-fundo" role="presentation" onClick={fechar}>
-      <aside className="gaveta" role="dialog" aria-label={titulo} onClick={(e) => e.stopPropagation()}>
+      <aside ref={ref} className="gaveta" role="dialog" aria-modal="true" aria-label={titulo} onClick={(e) => e.stopPropagation()}>
         <header className="linha-entre"><h2 className="titulo-editorial pequeno-ed">{titulo}</h2><button className="icone-botao" onClick={fechar} aria-label="Fechar">✕</button></header>
         {children}
       </aside>

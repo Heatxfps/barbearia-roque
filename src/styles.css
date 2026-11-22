@@ -919,3 +919,81 @@ body { font-variant-numeric: lining-nums; }
 .adiantar__depois { font-size: 44px; color: var(--ouro, var(--cobre-claro)); }
 .adiantar__aviso { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin: 4px 0; border-radius: 12px;
   background: rgba(200,147,90,.12); border: 1px solid var(--filete); font-size: 14px; }
+
+/* =========================================================
+   ACESSIBILIDADE (revisão pelas diretrizes da Apple)
+   - texto nunca menor que 11 px; contraste mínimo de 4,5:1 (texto) e 3:1 (formas)
+   - foco visível no teclado, diálogos com foco preso
+   - toque confortável no celular, menos movimento e mais contraste quando o sistema pede
+   ========================================================= */
+
+/* tamanhos mínimos (eram 9–10,5 px) */
+.selo--premio { font-size: 11px; letter-spacing: .02em; }
+.sobretitulo { font-size: 11.5px; letter-spacing: .24em; }
+.expediente__almoco { font-size: 11px; }
+.noivo-hero__credito { font-size: 11.5px; color: rgba(236,230,218,.8); text-shadow: 0 1px 6px rgba(0,0,0,.8); }
+.painel2__grupo-titulo { font-size: 11.5px; opacity: 1; }
+.fluxo__tags .badge { font-size: 11.5px; }
+
+/* contraste (eram 1,5:1 a 2,8:1) */
+.rodape { color: rgba(236,230,218,.6); }              /* 6,0:1 */
+.splash__pular { color: rgba(236,230,218,.65); }      /* 6,9:1 */
+.av-apagada { color: rgba(236,230,218,.4); }          /* 3,3:1 (forma) */
+.estrela { color: rgba(236,230,218,.4); }             /* 3,3:1 (forma) */
+.fluxo__no--off { opacity: .72; }                     /* desligada continua legível; o selo "desligada" diz o estado */
+
+/* foco visível no teclado (computador): anel cobre, só quando navegando pelo teclado */
+:focus-visible { outline: 2px solid var(--cobre-claro); outline-offset: 2px; }
+.campo input:focus-visible, .campo textarea:focus-visible, .campo select:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(226,178,122,.35); }
+.confirmar__caixa:focus, .gaveta:focus, .enquadrar:focus, .painel2__mais:focus { outline: none; }
+
+/* toque: alvos confortáveis no celular (recomendado 44 pt, mínimo 28 pt) */
+@media (pointer: coarse) {
+  .icone-botao { width: 44px; height: 44px; }
+  .chip, .filtros button { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+  .agenda-colunas .evento__acoes .chip { min-height: 36px; }
+  .botao.pequeno { min-height: 44px; }
+}
+
+/* menos movimento: sem deslizar, sem pulsar, sem zoom (o conteúdo aparece direto) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* mais contraste (ajuste do sistema): textos secundários e bordas mais fortes */
+@media (prefers-contrast: more) {
+  :root { --suave: #d2c8ba; --linha: rgba(236,230,218,.32); --filete: rgba(226,178,122,.7); }
+  .badge--off, .status-msg { color: var(--texto); }
+  .fluxo__no--off { opacity: 1; }
+}
+
+.vazio--acao { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+/* divisórias com título: quebram linha no zoom de 200% em vez de alargar a página */
+.ornamento h2 { white-space: normal; text-align: center; min-width: 0; }
+.ornamento span { min-width: 12px; }
+/* grades nunca mais largas que a tela (celular pequeno ou zoom de 200%) */
+.av-grade { grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); }
+.mensagens--grade { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+.lembretes { grid-template-columns: repeat(auto-fill, minmax(min(290px, 100%), 1fr)); }
+.painel2__topo h1 { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 300px) { .painel2__quem { display: none; } }
+/* telas muito estreitas (zoom de 200%): linhas quebram, números grandes encolhem */
+@media (max-width: 360px) {
+  .linha-entre { flex-wrap: wrap; }
+  .raia__legenda .badge, .badge { white-space: normal; }
+  .metrica { min-width: 0; }
+  .metrica strong { font-size: clamp(18px, 9vw, 26px); overflow-wrap: anywhere; }
+  .av-barbeiro { min-width: 0; }
+  .av-barbeiro__nome { overflow-wrap: anywhere; }
+}
+@media (max-width: 300px) { .metricas, .campos-2, .equipe { grid-template-columns: 1fr; } }
+@media (max-width: 360px) {
+  .barra-linha { grid-template-columns: minmax(0, 1fr) !important; }
+  .barra-linha > * { min-width: 0; overflow-wrap: anywhere; }
+  .fluxo { padding: 12px; }
+  .fluxo__nos { padding-left: 0; }
+  .fluxo__no, .fluxo__no-topo, .fluxo__no strong { min-width: 0; overflow-wrap: anywhere; }
+  .fluxo__etapa--centro .fluxo__atendimento { margin-left: 0; }
+}
+.seletor-dia > .centro { min-width: 0; flex: 1; }
+.seletor-dia > .centro strong { overflow-wrap: anywhere; }

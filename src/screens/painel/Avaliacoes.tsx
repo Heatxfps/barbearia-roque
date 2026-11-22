@@ -30,7 +30,7 @@ export default function Avaliacoes() {
       <section className="cartao av-resumo">
         <div className="av-resumo__media">
           <strong>{virgula(r.media)}</strong>
-          <span className="estrelas-txt">{estrelas(r.media)}</span>
+          <span className="estrelas-txt" role="img" aria-label={`Média ${virgula(r.media)} de 5`}>{estrelas(r.media)}</span>
           <span className="suave pequeno">{r.total} avaliações</span>
         </div>
 
@@ -38,7 +38,7 @@ export default function Avaliacoes() {
           <div className="av-resumo__dist" aria-label="Distribuição das notas">
             {r.distribuicao.map((d) => (
               <div key={d.nota} className="av-dist">
-                <span>{d.nota}★</span>
+                <span aria-label={`${d.nota} estrelas`}>{d.nota}★</span>
                 <div className="barra"><div style={{ width: `${(d.n / maxDist) * 100}%` }} /></div>
                 <span className="suave">{d.n}</span>
               </div>
@@ -67,11 +67,11 @@ export default function Avaliacoes() {
         {quem !== 'todos' && <button className="chip" onClick={() => setQuem('todos')}>{primeiroNome(quem)} ✕</button>}
       </div>
 
-      {!lista.length && <p className="vazio">Nada por aqui.</p>}
+      {!lista.length && <p className="vazio">Nenhuma avaliação com esse filtro.</p>}
       <div className="av-grade">
         {lista.map((v) => (
           <article key={v.id} className={`av-cartao ${v.nota <= 3 ? 'av-cartao--baixa' : ''}`}>
-            <span className="estrelas-txt">{'★'.repeat(v.nota)}<span className="av-apagada">{'★'.repeat(5 - v.nota)}</span></span>
+            <span className="estrelas-txt" role="img" aria-label={`Nota ${v.nota} de 5`}>{'★'.repeat(v.nota)}<span className="av-apagada">{'★'.repeat(5 - v.nota)}</span></span>
             {v.comentario ? <p className="avaliacao__texto">“{v.comentario}”</p> : <p className="suave pequeno">Sem comentário</p>}
             <span className="suave pequeno">{primeiroNome(v.cliente)} sobre {primeiroNome(v.profissional)} · {dataCurta(v.criadoEm)}</span>
           </article>

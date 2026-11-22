@@ -3,6 +3,7 @@
  * Devolve um JPEG já no tamanho final (ex.: 720×960 para barbeiro, 700×700 para produto).
  */
 import { useEffect, useRef, useState } from 'react'
+import { useDialogo } from './useDialogo'
 
 type Props = {
   arquivo: File
@@ -83,6 +84,9 @@ export default function Enquadrar({ arquivo, proporcao, saida, guiaRedonda, titu
   }
   const soltar = (e: React.PointerEvent) => { dedos.current.delete(e.pointerId); if (dedos.current.size < 2) pinca.current = null; arraste.current = null }
 
+  const caixa = useRef<HTMLDivElement>(null)
+  useDialogo(caixa, cancelar)
+
   const confirmar = () => {
     if (!img) return
     const c = document.createElement('canvas')
@@ -95,7 +99,7 @@ export default function Enquadrar({ arquivo, proporcao, saida, guiaRedonda, titu
 
   return (
     <div className="confirmar" role="presentation">
-      <div className="enquadrar" role="dialog" aria-label={titulo}>
+      <div ref={caixa} className="enquadrar" role="dialog" aria-modal="true" aria-label={titulo}>
         <p className="enquadrar__titulo">{titulo}</p>
         <div className="enquadrar__quadro" style={{ width: quadro.w, height: quadro.h }}
           onPointerDown={baixar} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={soltar}

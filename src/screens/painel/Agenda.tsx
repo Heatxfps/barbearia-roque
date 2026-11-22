@@ -83,7 +83,12 @@ export default function Agenda({ usuario }: { usuario: UsuarioPainel }) {
       {form === 'bloqueio' && <FormBloqueio data={data} usuario={usuario} aoSalvar={() => { setForm(null); carregar() }} />}
 
       {!agenda && <div className="cartao cartao--esqueleto" />}
-      {agenda && !ativos.length && !agenda.bloqueios.length && <p className="vazio">Nenhum horário marcado neste dia.</p>}
+      {agenda && !ativos.length && !agenda.bloqueios.length && (
+        <div className="vazio vazio--acao">
+          <p>Nenhum horário marcado neste dia.</p>
+          {form !== 'encaixe' && <button className="botao botao--fantasma pequeno" onClick={() => setForm('encaixe')}><Icone nome="mais" tam={18} /> Marcar um encaixe</button>}
+        </div>
+      )}
       {agenda && (ativos.length > 0 || agenda.bloqueios.length > 0) && (
         filtro === 'todos' && barbearia && barbearia.profissionais.length > 1 ? (
           <div className="agenda-colunas">

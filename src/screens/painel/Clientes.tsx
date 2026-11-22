@@ -48,7 +48,7 @@ export default function Clientes() {
 
       {vista === 'todos' && (
         <>
-          <label className="campo"><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por nome ou telefone" /></label>
+          <label className="campo"><input type="search" enterKeyHint="search" aria-label="Buscar cliente" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por nome ou telefone" /></label>
           <div className="lista">
             {lista?.map((c) => (
               <a key={c.id} className="item" href={linkWhats(c.telefone)} target="_blank" rel="noreferrer">
