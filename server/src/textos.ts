@@ -10,6 +10,9 @@ export const textos = {
   codigo: (codigo: string, barbearia: string) =>
     `*${barbearia}*\nSeu código de acesso é *${codigo}*.\nEle vale por 10 minutos. Não compartilhe com ninguém.`,
 
+  codigoPainel: (codigo: string) =>
+    `*Painel da Roque*\nCódigo para entrar: *${codigo}*\nVale por 10 minutos. Se não foi você, troque sua senha.`,
+
   confirmacao: (i: Info) =>
     `Fala, ${primeiro(i.nome)}! ✂️\nSeu horário na *${i.barbearia}* está confirmado:\n\n*${i.servico}* com ${i.profissional}\n📅 ${quando(i.inicio)}\n\nSe precisar remarcar ou cancelar, é só abrir o app.`,
 

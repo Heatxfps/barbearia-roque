@@ -1,7 +1,7 @@
 # Arquitetura (v1)
 
 ```
- Celular do cliente (PWA)        Painel (/#painel, no celular ou no computador)
+ Celular do cliente (PWA)        Painel da equipe (painel.html / painel.SEU-DOMINIO)
           │                                   │
           └──────────────┬────────────────────┘
                          ▼  HTTPS (Caddy)

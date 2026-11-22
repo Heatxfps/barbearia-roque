@@ -8,6 +8,7 @@ import Icone from '../../components/Icone'
 import { api, type DadosBarbearia, type Expediente, type NovoProfissional, type ProfissionalPainel, type Servico, type UsuarioLista, type UsuarioPainel } from '../../api'
 import { useApp } from '../../contexto'
 import { foto, lerImagem, moeda } from '../../util'
+import { Produtos } from './LojaPainel'
 
 type Avisar = (t: string, tipo?: 'ok' | 'erro') => void
 const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -17,15 +18,26 @@ export default function Ajustes({ usuario }: { usuario: UsuarioPainel }) {
   const dono = usuario.papel === 'dono'
   return (
     <div className="painel__grade">
-      <section className="painel__col">
-        {dono && <Servicos avisar={avisar} />}
-        {dono && <Equipe avisar={avisar} />}
-      </section>
-      <aside className="painel__col">
-        {dono && <Barbearia avisar={avisar} />}
-        {dono && <Acessos avisar={avisar} />}
-        <Senha avisar={avisar} />
-      </aside>
+      {dono ? (
+        <>
+          <section className="painel__col">
+            <Servicos avisar={avisar} />
+            <Equipe avisar={avisar} />
+            <Produtos avisar={avisar} />
+          </section>
+          <aside className="painel__col">
+            <Barbearia avisar={avisar} />
+            <Acessos avisar={avisar} />
+            <Seguranca usuario={usuario} avisar={avisar} />
+            <Senha avisar={avisar} />
+          </aside>
+        </>
+      ) : (
+        <section className="painel__col">
+          <p className="suave">Preços, equipe, produtos e acessos são configurados pelo dono. Aqui você troca a sua senha.</p>
+          <Senha avisar={avisar} />
+        </section>
+      )}
     </div>
   )
 }
@@ -323,6 +335,42 @@ function Senha({ avisar }: { avisar: Avisar }) {
         <label className="campo"><span>Repita a nova senha</span><input type="password" value={s.repetir} onChange={(e) => setS({ ...s, repetir: e.target.value })} autoComplete="new-password" /></label>
         {s.repetir && s.nova !== s.repetir && <p className="pequeno erro">As senhas não conferem.</p>}
         <button className="botao botao--principal pequeno" disabled={!ok} onClick={salvar}>Trocar senha</button>
+      </div>
+    </>
+  )
+}
+
+/* ---------------- segurança do dono ---------------- */
+function Seguranca({ usuario, avisar }: { usuario: UsuarioPainel; avisar: Avisar }) {
+  const [ativo, setAtivo] = useState(!!usuario.verificacaoWhatsApp)
+  const [tel, setTel] = useState('')
+  const [senha, setSenha] = useState('')
+  const [editando, setEditando] = useState(false)
+  const salvar = async (telefone: string | null) => {
+    try {
+      await api.painel.salvarSeguranca(senha, telefone)
+      setAtivo(!!telefone); setEditando(false); setSenha(''); setTel('')
+      avisar(telefone ? 'Pronto: ao entrar como dono, o painel vai pedir o código do WhatsApp.' : 'Verificação pelo WhatsApp desligada.')
+    } catch (e) { avisar((e as Error).message, 'erro') }
+  }
+  return (
+    <>
+      <h2 className="secao">Segurança</h2>
+      <div className="cartao form">
+        <div className="linha-entre"><strong>Código no WhatsApp ao entrar</strong><span className={`badge ${ativo ? '' : 'badge--off'}`}>{ativo ? 'Ligado' : 'Desligado'}</span></div>
+        <p className="suave pequeno">A conta do dono vê o faturamento e mexe em tudo. Com isso ligado, além da senha, o painel pede um código que chega no seu WhatsApp.</p>
+        {editando ? (
+          <>
+            {!ativo && <label className="campo"><span>Seu WhatsApp (com DDD)</span><input value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" placeholder="(27) 9 9999-9999" /></label>}
+            <label className="campo"><span>Sua senha (para confirmar)</span><input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="current-password" /></label>
+            <div className="acoes">
+              {ativo
+                ? <button className="botao botao--perigo pequeno" disabled={!senha} onClick={() => salvar(null)}>Desligar</button>
+                : <button className="botao botao--principal pequeno" disabled={!senha || tel.replace(/\D/g, '').length < 10} onClick={() => salvar(tel)}>Ligar</button>}
+              <button className="botao botao--fantasma pequeno" onClick={() => setEditando(false)}>Cancelar</button>
+            </div>
+          </>
+        ) : <button className="botao botao--fantasma pequeno" onClick={() => setEditando(true)}>{ativo ? 'Desligar' : 'Ligar agora'}</button>}
       </div>
     </>
   )

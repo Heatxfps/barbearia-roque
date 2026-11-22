@@ -70,7 +70,7 @@ cat <<FIM
 
 ✂️  Pronto!
     App:     https://$DOMINIO
-    Painel:  https://$DOMINIO/#painel
+    Painel:  https://painel.$DOMINIO   (só para a equipe)
 
     O certificado HTTPS sai sozinho em até 1 minuto (o domínio precisa apontar para este IP).
     Atualizar depois:  git pull && docker compose up -d --build

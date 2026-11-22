@@ -8,7 +8,7 @@ O ideal é ter **dois aparelhos**: o seu celular (cliente) e um notebook ou tabl
    - VPS: `docker compose exec roque node --disable-warning=ExperimentalWarning src/seed-demo.ts --limpar`
    - Notebook: `npm run servidor:demo` e `npm run servidor`
 2. No celular, abra o link e **instale o app** (iPhone: Compartilhar → Adicionar à Tela de Início; Android: ⋮ → Instalar app).
-3. No notebook, abra `SEU-LINK/#painel` e entre com o login do dono.
+3. No notebook, abra o **painel da equipe** (`painel.SEU-DOMINIO`, ou `localhost:3333/painel`) e entre com o login do dono. Mostre que ele é separado do app do cliente: *"o cliente nunca vê isso"*.
 4. Brilho alto e notificações desligadas.
 
 > Sem internet ou sem servidor? A vitrine https://heatxfps.github.io/barbearia-roque/ funciona sozinha, com dados fictícios no próprio celular.

@@ -49,6 +49,8 @@ export async function criarApp(db: DB, opcoes: { logger?: boolean } = {}) {
   const pasta = resolve(config.pastaApp)
   if (existsSync(resolve(pasta, 'index.html'))) {
     await app.register(fastifyStatic, { root: pasta, wildcard: false })
+    // painel da equipe: página separada do app do cliente
+    app.get('/painel', (_req, reply) => reply.sendFile('painel.html'))
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api')) return reply.status(404).send({ erro: 'Rota não encontrada' })
       return reply.sendFile('index.html')

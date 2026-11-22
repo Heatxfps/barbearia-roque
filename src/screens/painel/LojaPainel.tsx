@@ -3,13 +3,13 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import Icone from '../../components/Icone'
-import { api, type PedidoPainel, type Produto, type StatusPedido, type UsuarioPainel } from '../../api'
+import { api, type PedidoPainel, type Produto, type StatusPedido } from '../../api'
 import { useApp } from '../../contexto'
 import { dataCurta, foto, formatarTelefone, hora, lerImagem, linkWhats, moeda } from '../../util'
 
 const ROTULO: Record<StatusPedido, string> = { novo: 'Novo', separado: 'Separado', retirado: 'Retirado', cancelado: 'Cancelado' }
 
-export default function LojaPainel({ usuario }: { usuario: UsuarioPainel }) {
+export default function LojaPainel() {
   const { avisar, confirmar } = useApp()
   const [todos, setTodos] = useState(false)
   const [pedidos, setPedidos] = useState<PedidoPainel[] | null>(null)
@@ -22,7 +22,7 @@ export default function LojaPainel({ usuario }: { usuario: UsuarioPainel }) {
   }
 
   return (
-    <div className="painel__grade">
+    <div className="painel__col">
       <section className="painel__col">
         <div className="linha-entre">
           <h2 className="secao">Pedidos para retirar</h2>
@@ -52,14 +52,12 @@ export default function LojaPainel({ usuario }: { usuario: UsuarioPainel }) {
           ))}
         </div>
       </section>
-      <aside className="painel__col">
-        {usuario.papel === 'dono' ? <Produtos avisar={avisar} /> : <p className="suave pequeno">Produtos e preços são cadastrados pelo dono.</p>}
-      </aside>
     </div>
   )
 }
 
-function Produtos({ avisar }: { avisar: (t: string, tipo?: 'ok' | 'erro') => void }) {
+/** Cadastro de produtos (fica em Ajustes, só para o dono) */
+export function Produtos({ avisar }: { avisar: (t: string, tipo?: 'ok' | 'erro') => void }) {
   const { confirmar } = useApp()
   const [lista, setLista] = useState<Produto[] | null>(null)
   const [editando, setEditando] = useState<string | null>(null)

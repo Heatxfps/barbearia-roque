@@ -34,6 +34,7 @@ export async function rotasPublicas(app: FastifyInstance, db: DB) {
       ...resto,
       dono: dono ? { nome: dono, foto: dono_foto ?? null } : null,
       googleAvaliacao: google_avaliacao ?? '',
+      urlApp: config.urlApp,
       descontoAniversario: Number(desconto_aniversario ?? 15),
       horarios: horariosDaCasa(db),
       fidelidadeMeta: config.regras.fidelidadeMeta,

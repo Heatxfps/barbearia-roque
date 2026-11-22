@@ -6,7 +6,6 @@ import Agendar from './screens/Agendar'
 import MeusHorarios from './screens/MeusHorarios'
 import Fidelidade from './screens/Fidelidade'
 import Perfil from './screens/Perfil'
-import Painel from './screens/painel/Painel'
 import Noivo from './screens/Noivo'
 import Loja from './screens/Loja'
 import Avaliar from './screens/Avaliar'
@@ -14,13 +13,13 @@ import { ProvedorApp, useApp } from './contexto'
 
 export type Aba = 'inicio' | 'agenda' | 'fidelidade' | 'perfil'
 export type OpcoesAgendar = { servicoId?: string; profissionalId?: string }
-export type Navegar = (destino: Aba | 'agendar' | 'painel' | 'noivo' | 'loja', opcoes?: OpcoesAgendar) => void
+export type Navegar = (destino: Aba | 'agendar' | 'noivo' | 'loja', opcoes?: OpcoesAgendar) => void
 
-type Modal = null | ({ tipo: 'agendar' } & OpcoesAgendar) | { tipo: 'painel' } | { tipo: 'noivo' } | { tipo: 'loja' } | { tipo: 'avaliar'; id: string }
+type Modal = null | ({ tipo: 'agendar' } & OpcoesAgendar) | { tipo: 'noivo' } | { tipo: 'loja' } | { tipo: 'avaliar'; id: string }
 
-/** abre direto pelo endereço: /#painel ou /#avaliar/ID (link do WhatsApp) */
+/** abre direto pelo endereço: /#avaliar/ID (link do WhatsApp). O painel da equipe fica em painel.html, fora do app. */
 function modalDoEndereco(): Modal {
-  if (location.hash === '#painel') return { tipo: 'painel' }
+  if (location.hash === '#painel') { location.replace('./painel.html'); return null } // link antigo
   const m = /^#avaliar\/([\w-]{6,40})$/.exec(location.hash)
   return m ? { tipo: 'avaliar', id: m[1] } : null
 }
@@ -41,7 +40,6 @@ function Conteudo() {
   const navegar: Navegar = (destino, opcoes) => {
     if (destino === 'agendar') setModal({ tipo: 'agendar', ...opcoes })
     else if (destino === 'noivo' || destino === 'loja') setModal({ tipo: destino })
-    else if (destino === 'painel') { setModal({ tipo: 'painel' }); history.replaceState(null, '', '#painel') }
     else { setModal(null); setAba(destino); if (location.hash) history.replaceState(null, '', location.pathname) }
     window.scrollTo(0, 0)
   }
@@ -59,7 +57,6 @@ function Conteudo() {
     { id: 'perfil', rotulo: 'A Roque', icone: 'perfil' },
   ]
 
-  if (modal?.tipo === 'painel') return <Painel navegar={navegar} />
 
   return (
     <div className="app">

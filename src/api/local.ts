@@ -290,8 +290,24 @@ ${c.nome} · ${sv.nome}
       await espera()
       if (email.toLowerCase() !== 'dono@roque.local' || senha !== 'roque123') throw new Error('E-mail ou senha incorretos (demo: dono@roque.local / roque123)')
       banco.painel = true; salvar()
-      return { nome: 'Luciano Roque', email, papel: 'dono', profissionalId: null }
+      return { usuario: { nome: 'Luciano Roque', email, papel: 'dono', profissionalId: null } }
     },
+    async confirmarCodigo() { throw new Error(OFFLINE) },
+    async retorno() {
+      const ultima: Record<string, string> = {}
+      banco.agendamentos.filter((a) => a.status === 'concluido').forEach((a) => { if (!ultima[a.clienteId] || a.inicio > ultima[a.clienteId]) ultima[a.clienteId] = a.inicio })
+      const futuros = new Set(banco.agendamentos.filter((a) => a.status === 'confirmado').map((a) => a.clienteId))
+      return Object.entries(ultima).map(([cid, u]) => ({ cid, u, dias: Math.floor((Date.now() - ler(u).getTime()) / 864e5) }))
+        .filter((x) => x.dias >= 20 && !futuros.has(x.cid)).sort((a, b) => b.dias - a.dias)
+        .map((x) => ({ id: x.cid, nome: cliente(x.cid)!.nome, telefone: cliente(x.cid)!.telefone, dias: x.dias, avisado: true, ultimaVisita: x.u }))
+    },
+    async aniversariantes() {
+      const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+      const dias = Array.from({ length: 7 }, (_, i) => dataIso(new Date(hoje.getTime() + i * 864e5)).slice(5))
+      return banco.clientes.filter((c) => c.aniversario && dias.includes(c.aniversario))
+        .map((c) => ({ id: c.id, nome: c.nome, telefone: c.telefone, aniversario: c.aniversario!, emDias: dias.indexOf(c.aniversario!) })).sort((a, b) => a.emDias - b.emDias)
+    },
+    async salvarSeguranca() { throw new Error(OFFLINE) },
     sair() { banco.painel = false; salvar() },
     async eu() { return { nome: 'Luciano Roque', email: 'dono@roque.local', papel: 'dono', profissionalId: null } },
     async resumo(data) {

@@ -4,7 +4,7 @@ Aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, login 
 
 > **Status:** v1.2 premium, com app, painel e servidor completos e testados. Equipe real (Daniel Andrade e Guilherme Moreira) e fundador (Luciano Roque). Serviços e preços ainda são **exemplos**, editáveis pelo painel. Veja [docs/PENDENCIAS.md](docs/PENDENCIAS.md).
 
-**Vitrine (modo offline, sem servidor):** https://heatxfps.github.io/barbearia-roque/ · painel: [`/#painel`](https://heatxfps.github.io/barbearia-roque/#painel) (demo: `dono@roque.local` / `roque123`)
+**Vitrine (modo offline, sem servidor):** https://heatxfps.github.io/barbearia-roque/ · painel da equipe: [`painel.html`](https://heatxfps.github.io/barbearia-roque/painel.html) (demo: `dono@roque.local` / `roque123`)
 
 ## O que tem
 
@@ -22,7 +22,13 @@ Aplicativo da **Barbearia Roque** (Nova Venécia/ES): agendamento online, login 
 - **Aniversário**: cadastra o dia e ganha um desconto que entra sozinho no próximo horário
 - A Roque: fundador, horário de funcionamento, WhatsApp, Instagram e mapa
 
-**Para a barbearia (painel em `/#painel`)**
+**Para a barbearia (painel da equipe, fora do app do cliente)**
+
+O painel é uma página própria: `painel.SEU-DOMINIO` na VPS, `localhost:3333/painel` no computador. Pode ser instalado no celular dos barbeiros ou num tablet do balcão como um app à parte ("Roque · Painel"). O app do cliente não tem botão nem código do painel.
+
+- **Seções:** *Dia a dia* (Agenda, Loja) · *Clientes* (Clientes, Avaliações, Mensagens) · *Gestão* (Resultados, Divulgação, Ajustes). Menu lateral no computador; barra inferior + "Mais" no celular
+- **Quem vê o quê:** a equipe toda vê tudo, menos **Resultados** (financeiro), que é só do dono. Em Ajustes o barbeiro só troca a própria senha
+- **Segurança:** acesso expira em 12 h (ou 30 dias com "manter conectado neste aparelho"); barbeiro novo troca a senha no 1º acesso; o dono pode exigir um **código no WhatsApp** ao entrar
 - **Agenda conjunta**: uma coluna por barbeiro, com foto, e ações **concluído**, **faltou**, **cancelar** e WhatsApp do cliente; lista de espera do dia
 - **Avaliações**: média geral, por barbeiro e os últimos comentários
 - **Loja**: pedidos para separar ("separado" avisa o cliente) e cadastro de produtos com foto
@@ -68,7 +74,7 @@ npm run dev
 ```
 
 - App: `http://localhost:5173`
-- Painel: `http://localhost:5173/#painel` (padrão de demonstração: `dono@roque.local` / `roque123`)
+- Painel da equipe: `http://localhost:5173/painel.html` (no modo `npm run local`: `http://localhost:3333/painel`). Demonstração: `dono@roque.local` / `roque123`
 - No celular, na mesma rede Wi-Fi: use o endereço "Network" que o Vite mostra
 
 ### Servidor local no modo produção

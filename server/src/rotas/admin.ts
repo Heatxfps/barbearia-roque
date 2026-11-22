@@ -5,9 +5,10 @@
  * Números de faturamento, clientes sumidos e ajustes ficam só com o dono.
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import { createHash, randomInt } from 'node:crypto'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { z } from 'zod'
-import { pastaFotos } from '../config.ts'
+import { config, pastaFotos } from '../config.ts'
 import { enviarWhatsApp } from '../whatsapp.ts'
 import { textos } from '../textos.ts'
 import type { DB } from '../db.ts'
@@ -28,13 +29,53 @@ const filtroResumo = (req: FastifyRequest) => {
 }
 
 export async function rotasAdmin(app: FastifyInstance, db: DB) {
+  type Usuario = { id: string; nome: string; email: string; senha_hash: string; papel: 'dono' | 'barbeiro'; profissional_id: string | null; telefone: string | null; trocar_senha: number }
+  const hashCodigo = (chave: string, c: string) => createHash('sha256').update(`${chave}:${c}:${config.jwtSegredo}`).digest('hex')
+  const mascarar = (t: string) => `(${t.slice(2, 4)}) •••••-${t.slice(-4)}`
+
+  /** Token do painel: 12 h, ou 30 dias com "manter conectado neste aparelho" */
+  const emitir = (u: Usuario, lembrar: boolean) => {
+    const trocar = !!u.trocar_senha
+    const token = app.jwt.sign({ tipo: 'admin', id: u.id, papel: u.papel, profissionalId: u.profissional_id, ...(trocar ? { trocar: true } : {}) },
+      { expiresIn: trocar ? '1h' : lembrar ? '30d' : '12h' })
+    return { token, usuario: { nome: u.nome, email: u.email, papel: u.papel, profissionalId: u.profissional_id, trocarSenha: trocar } }
+  }
+
   app.post('/login', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req) => {
-    const b = z.object({ email: z.string().email(), senha: z.string().min(1) }).parse(req.body)
-    const u = db.prepare('SELECT id, nome, email, senha_hash, papel, profissional_id FROM usuarios WHERE email = ?').get(b.email.toLowerCase()) as
-      { id: string; nome: string; email: string; senha_hash: string; papel: 'dono' | 'barbeiro'; profissional_id: string | null } | undefined
+    const b = z.object({ email: z.string().email(), senha: z.string().min(1), lembrar: z.boolean().default(false) }).parse(req.body)
+    const u = db.prepare('SELECT * FROM usuarios WHERE email = ?').get(b.email.toLowerCase()) as Usuario | undefined
     if (!u || !conferirSenha(b.senha, u.senha_hash)) throw new ErroNegocio('E-mail ou senha incorretos', 401)
-    const token = app.jwt.sign({ tipo: 'admin', id: u.id, papel: u.papel, profissionalId: u.profissional_id }, { expiresIn: '30d' })
-    return { token, usuario: { nome: u.nome, email: u.email, papel: u.papel, profissionalId: u.profissional_id } }
+    // o dono (que vê faturamento e mexe em tudo) confirma com um código no WhatsApp dele
+    if (u.papel === 'dono' && u.telefone) {
+      const codigo = String(randomInt(0, 1_000_000)).padStart(6, '0')
+      const chave = `painel:${u.id}`
+      db.prepare(`INSERT INTO codigos (telefone, codigo_hash, expira_em, enviado_em, tentativas) VALUES (?, ?, ?, ?, 0)
+                  ON CONFLICT(telefone) DO UPDATE SET codigo_hash = excluded.codigo_hash, expira_em = excluded.expira_em, enviado_em = excluded.enviado_em, tentativas = 0`)
+        .run(chave, hashCodigo(chave, codigo), Date.now() + 10 * 60_000, Date.now())
+      await enviarWhatsApp(db, u.telefone, 'codigo_painel', textos.codigoPainel(codigo))
+      const desafio = app.jwt.sign({ tipo: 'desafio', id: u.id, lembrar: b.lembrar }, { expiresIn: '10m' })
+      return { etapa: 'codigo', desafio, destino: mascarar(u.telefone), ...(config.whatsapp.modo === 'demo' ? { codigoDemo: codigo } : {}) }
+    }
+    return emitir(u, b.lembrar)
+  })
+
+  app.post('/login/codigo', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req) => {
+    const b = z.object({ desafio: z.string(), codigo: z.string().regex(/^\d{6}$/) }).parse(req.body)
+    let d: { tipo: string; id: string; lembrar: boolean }
+    try { d = app.jwt.verify(b.desafio) } catch { throw new ErroNegocio('O tempo acabou. Entre de novo.', 401) }
+    if (d.tipo !== 'desafio') throw new ErroNegocio('Acesso negado', 403)
+    const chave = `painel:${d.id}`
+    const reg = db.prepare('SELECT codigo_hash, expira_em, tentativas FROM codigos WHERE telefone = ?').get(chave) as { codigo_hash: string; expira_em: number; tentativas: number } | undefined
+    if (!reg || reg.expira_em < Date.now()) throw new ErroNegocio('Código expirado. Entre de novo.', 401)
+    if (reg.tentativas >= 5) throw new ErroNegocio('Muitas tentativas. Entre de novo.', 429)
+    if (reg.codigo_hash !== hashCodigo(chave, b.codigo)) {
+      db.prepare('UPDATE codigos SET tentativas = tentativas + 1 WHERE telefone = ?').run(chave)
+      throw new ErroNegocio('Código incorreto')
+    }
+    db.prepare('DELETE FROM codigos WHERE telefone = ?').run(chave)
+    const u = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(d.id) as Usuario | undefined
+    if (!u) throw new ErroNegocio('Acesso removido', 401)
+    return emitir(u, d.lembrar)
   })
 
   // tudo abaixo exige login no painel
@@ -43,10 +84,28 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
 
     r.get('/eu', async (req) => {
       const s = sessao(req)
-      return db.prepare('SELECT nome, email, papel, profissional_id AS profissionalId FROM usuarios WHERE id = ?').get(s.id)
+      const u = db.prepare('SELECT nome, email, papel, profissional_id AS profissionalId, telefone, trocar_senha FROM usuarios WHERE id = ?').get(s.id) as
+        { trocar_senha: number; telefone: string | null } & Record<string, unknown> | undefined
+      if (!u) throw new ErroNegocio('Acesso removido', 401)
+      const { trocar_senha, telefone, ...resto } = u
+      return { ...resto, trocarSenha: !!trocar_senha, verificacaoWhatsApp: !!telefone }
     })
 
-    r.get('/resumo', async (req) => {
+    r.get('/mensagens', async () => db.prepare('SELECT id, telefone, tipo, texto, status, erro, criado_em AS criadoEm FROM mensagens ORDER BY criado_em DESC, rowid DESC LIMIT 60').all())
+
+    /** Clientes sumidos (para chamar de volta): todos da equipe podem ver */
+    r.get('/retorno', async () => clientesParaRetorno(db).slice(0, 50))
+
+    /** Aniversariantes dos próximos 7 dias */
+    r.get('/aniversariantes', async () => {
+      const hoje = agora(); hoje.setHours(0, 0, 0, 0)
+      const dias = Array.from({ length: 7 }, (_, i) => { const d = new Date(hoje); d.setDate(d.getDate() + i); return dataIso(d).slice(5) })
+      const lista = db.prepare(`SELECT id, nome, telefone, aniversario FROM clientes WHERE aniversario IN (${dias.map(() => '?').join(',')})`).all(...dias) as
+        { id: string; nome: string; telefone: string; aniversario: string }[]
+      return lista.map((c) => ({ ...c, emDias: dias.indexOf(c.aniversario) })).sort((a, b) => a.emDias - b.emDias)
+    })
+
+    r.get('/resumo', { onRequest: exigirDono }, async (req) => {
       const { data } = z.object({ data: z.string().refine(dataValida).optional() }).parse(req.query)
       const dia = data ?? dataIso(agora())
       const prof = filtroResumo(req)
@@ -179,8 +238,10 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       const b = z.object({ atual: z.string(), nova: z.string().min(8, 'A nova senha precisa ter pelo menos 8 caracteres') }).parse(req.body)
       const u = db.prepare('SELECT senha_hash FROM usuarios WHERE id = ?').get(sessao(req).id) as { senha_hash: string }
       if (!conferirSenha(b.atual, u.senha_hash)) throw new ErroNegocio('Senha atual incorreta')
-      db.prepare('UPDATE usuarios SET senha_hash = ? WHERE id = ?').run(hashSenha(b.nova), sessao(req).id)
-      return { ok: true }
+      if (b.atual === b.nova) throw new ErroNegocio('A nova senha precisa ser diferente da atual')
+      db.prepare('UPDATE usuarios SET senha_hash = ?, trocar_senha = 0 WHERE id = ?').run(hashSenha(b.nova), sessao(req).id)
+      // devolve um token novo, já sem a trava de "trocar senha"
+      return emitir(db.prepare('SELECT * FROM usuarios WHERE id = ?').get(sessao(req).id) as Usuario, false)
     })
 
     r.delete('/espera/:id', async (req) => {
@@ -191,12 +252,15 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
 
     /** Avaliações: média geral, por barbeiro e as mais recentes */
     r.get('/avaliacoes', async () => {
-      const geral = db.prepare('SELECT ROUND(AVG(nota), 1) AS media, COUNT(*) AS total FROM avaliacoes').get() as { media: number | null; total: number }
+      // a equipe toda vê as avaliações da casa
+      const f = ''
+      const args: string[] = []
+      const geral = db.prepare(`SELECT ROUND(AVG(nota), 1) AS media, COUNT(*) AS total FROM avaliacoes v ${f}`).get(...args) as { media: number | null; total: number }
       const porProfissional = db.prepare(`SELECT p.id, p.nome, p.foto, ROUND(AVG(v.nota), 1) AS media, COUNT(*) AS n
-                                          FROM avaliacoes v JOIN profissionais p ON p.id = v.profissional_id GROUP BY p.id ORDER BY media DESC`).all()
+                                          FROM avaliacoes v JOIN profissionais p ON p.id = v.profissional_id ${f} GROUP BY p.id ORDER BY media DESC`).all(...args)
       const recentes = db.prepare(`SELECT v.id, v.nota, v.comentario, v.criado_em AS criadoEm, c.nome AS cliente, p.nome AS profissional
                                    FROM avaliacoes v JOIN clientes c ON c.id = v.cliente_id JOIN profissionais p ON p.id = v.profissional_id
-                                   ORDER BY v.criado_em DESC LIMIT 30`).all()
+                                   ${f} ORDER BY v.criado_em DESC LIMIT 60`).all(...args)
       return { media: geral.media ?? 0, total: geral.total, porProfissional, recentes }
     })
 
@@ -220,11 +284,22 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       return { ok: true }
     })
 
-    r.get('/mensagens', async () => db.prepare('SELECT id, telefone, tipo, texto, status, erro, criado_em AS criadoEm FROM mensagens ORDER BY criado_em DESC, rowid DESC LIMIT 60').all())
 
     // ---------- só o dono ----------
     r.register(async (d) => {
       d.addHook('onRequest', exigirDono)
+
+
+      /** WhatsApp do dono para o código de entrada (pede a senha atual para mudar) */
+      d.put('/seguranca', async (req) => {
+        const b = z.object({ senha: z.string(), telefone: z.string().nullable() }).parse(req.body)
+        const u = db.prepare('SELECT senha_hash FROM usuarios WHERE id = ?').get(sessao(req).id) as { senha_hash: string }
+        if (!conferirSenha(b.senha, u.senha_hash)) throw new ErroNegocio('Senha incorreta')
+        const tel = b.telefone ? normalizarTelefone(b.telefone) : null
+        if (b.telefone && !tel) throw new ErroNegocio('WhatsApp inválido. Use DDD + número.')
+        db.prepare('UPDATE usuarios SET telefone = ? WHERE id = ?').run(tel, sessao(req).id)
+        return { ok: true, verificacaoWhatsApp: !!tel }
+      })
 
       d.get('/servicos', async () => db.prepare('SELECT * FROM servicos ORDER BY ordem').all())
       const servicoSchema = z.object({
@@ -377,7 +452,7 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
       d.post('/usuarios', async (req, reply) => {
         const b = z.object({ nome: z.string().min(2), email: z.string().email(), senha: z.string().min(6), profissionalId: z.string() }).parse(req.body)
         try {
-          db.prepare('INSERT INTO usuarios (id, email, nome, senha_hash, papel, profissional_id) VALUES (?, ?, ?, ?, ?, ?)')
+          db.prepare('INSERT INTO usuarios (id, email, nome, senha_hash, papel, profissional_id, trocar_senha) VALUES (?, ?, ?, ?, ?, ?, 1)')
             .run(novoId(), b.email.toLowerCase(), b.nome, hashSenha(b.senha), 'barbeiro', b.profissionalId)
         } catch { throw new ErroNegocio('Esse e-mail já tem acesso', 409) }
         return reply.status(201).send({ ok: true })

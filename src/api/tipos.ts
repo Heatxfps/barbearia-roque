@@ -11,6 +11,8 @@ export type Barbearia = {
   instagram: string
   dono?: { nome: string; foto: string | null } | null
   googleAvaliacao?: string
+  /** endereço público do app do cliente (o painel fica em outro endereço) */
+  urlApp?: string
   descontoAniversario?: number
   horarios: Record<number, [string, string] | null>
   fidelidadeMeta: number
@@ -43,7 +45,11 @@ export type Agendamento = {
 
 export type Dia = { data: string; livres: number }
 
-export type UsuarioPainel = { nome: string; email: string; papel: 'dono' | 'barbeiro'; profissionalId: string | null }
+export type UsuarioPainel = { nome: string; email: string; papel: 'dono' | 'barbeiro'; profissionalId: string | null; trocarSenha?: boolean; verificacaoWhatsApp?: boolean }
+/** login do painel: entra direto, ou (dono com WhatsApp cadastrado) pede o código */
+export type ResultadoLogin = { usuario: UsuarioPainel } | { etapa: 'codigo'; desafio: string; destino: string; codigoDemo?: string }
+export type Retorno = { id: string; nome: string; telefone: string; dias: number; avisado: boolean; ultimaVisita: string }
+export type Aniversariante = { id: string; nome: string; telefone: string; aniversario: string; emDias: number }
 
 export type Resumo = {
   data: string
@@ -107,7 +113,11 @@ export interface Api {
 
   painel: {
     logado(): boolean
-    entrar(email: string, senha: string): Promise<UsuarioPainel>
+    entrar(email: string, senha: string, lembrar: boolean): Promise<ResultadoLogin>
+    confirmarCodigo(desafio: string, codigo: string): Promise<UsuarioPainel>
+    retorno(): Promise<Retorno[]>
+    aniversariantes(): Promise<Aniversariante[]>
+    salvarSeguranca(senha: string, telefone: string | null): Promise<void>
     sair(): void
     eu(): Promise<UsuarioPainel>
     resumo(data: string): Promise<Resumo>

@@ -35,7 +35,7 @@ O script:
 5. sobe o app com HTTPS automático;
 6. agenda o **backup diário** do banco às 3h30.
 
-Em ~1 minuto o app está em `https://SEU-DOMINIO`, e o painel em `https://SEU-DOMINIO/#painel`.
+Em ~1 minuto o app está em `https://SEU-DOMINIO`, e o painel da equipe em `https://painel.SEU-DOMINIO` (endereço separado, só para a equipe; quem abrir `/painel` no endereço do app é mandado para lá).
 
 Pode rodar o script de novo sem medo: ele não sobrescreve o `.env` nem o banco.
 
@@ -58,7 +58,7 @@ docker compose exec roque node --disable-warning=ExperimentalWarning src/seed-de
 ## Trocar o sslip.io por um domínio próprio
 
 1. Registre o domínio (ex.: `barbeariaroque.com.br` no registro.br, ~R$ 40/ano, no CNPJ da barbearia).
-2. No painel do registro.br, em **DNS**, crie um registro **A** apontando para o IP da VPS (e outro para `www`, se quiser).
+2. No painel do registro.br, em **DNS**, crie um registro **A** apontando para o IP da VPS e **outro registro A chamado `painel`** (o painel da equipe fica em `painel.seudominio`). Um para `www` é opcional.
 3. Espere o DNS propagar (de minutos a algumas horas). Confira com `ping barbeariaroque.com.br`: tem que responder o IP da VPS.
 4. Na VPS:
 

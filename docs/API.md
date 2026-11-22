@@ -46,9 +46,12 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 
 | Método | Rota | Quem | O que faz |
 |---|---|---|---|
-| POST | `/admin/login` `{ email, senha }` | todos | `{ token, usuario }` |
+| POST | `/admin/login` `{ email, senha, lembrar? }` | todos | `{ token, usuario }` (12 h; 30 dias com `lembrar`). Dono com WhatsApp cadastrado recebe `{ etapa: "codigo", desafio }` |
+| POST | `/admin/login/codigo` `{ desafio, codigo }` | dono | Confirma o código do WhatsApp e devolve `{ token, usuario }` |
 | GET | `/admin/eu` | todos | Usuário logado |
-| GET | `/admin/resumo?data=` | todos* | Números do dia e do mês, ranking, clientes para chamar de volta (só o dono) |
+| GET | `/admin/resumo?data=` | dono | Resultados financeiros do dia e do mês, ranking |
+| GET | `/admin/retorno` | todos | Clientes para chamar de volta |
+| GET | `/admin/aniversariantes` | todos | Aniversários dos próximos 7 dias |
 | GET | `/admin/agenda?data=&profissional=` | todos | Agendamentos e bloqueios do dia (`profissional=todos` = agenda da casa) |
 | PATCH | `/admin/agendamentos/:id` `{ status }` | todos | `concluido`, `faltou`, `cancelado` ou `confirmado` |
 | POST | `/admin/agendamentos` `{ nome, telefone?, servicoId, profissionalId, data, hora }` | todos | Encaixe / cliente de balcão |
@@ -61,7 +64,8 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 | GET | `/admin/usuarios` | dono | Quem tem acesso ao painel |
 | POST | `/admin/usuarios` `{ nome, email, senha, profissionalId }` | dono | Cria acesso de barbeiro |
 | DELETE | `/admin/usuarios/:id` | dono | Remove o acesso de um barbeiro |
-| PUT | `/admin/senha` `{ atual, nova }` | todos | Troca a própria senha (mínimo 8 caracteres) |
+| PUT | `/admin/senha` `{ atual, nova }` | todos | Troca a própria senha (mínimo 8) e devolve um token novo. Barbeiro novo é obrigado a fazer isso no 1º acesso (antes disso só `/eu` e `/senha` respondem) |
+| PUT | `/admin/seguranca` `{ senha, telefone \| null }` | dono | Liga/desliga o código no WhatsApp para entrar como dono |
 | GET | `/admin/avaliacoes` | todos | Média, por barbeiro e últimos comentários |
 | DELETE | `/admin/espera/:id` | todos | Tira alguém da lista de espera (a agenda do dia traz `espera`) |
 | GET/PATCH | `/admin/pedidos[/:id]` `{ status }` | todos | Pedidos da loja: `novo`, `separado` (avisa o cliente), `retirado`, `cancelado` |

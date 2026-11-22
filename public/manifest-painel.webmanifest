@@ -1,0 +1,16 @@
+{
+  "id": "./painel.html",
+  "name": "Roque · Painel",
+  "short_name": "Roque Painel",
+  "description": "Agenda, clientes e loja da Barbearia Roque (só para a equipe)",
+  "start_url": "./painel.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#110e0c",
+  "theme_color": "#110e0c",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "img/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "img/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

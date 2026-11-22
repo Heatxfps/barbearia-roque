@@ -157,22 +157,32 @@ test('dono altera preço e o app já mostra o novo valor', async () => {
   assert.equal(s.preco, 50)
 })
 
-test('agenda conjunta: barbeiro vê a casa toda, mas não vê faturamento nem ajustes', async () => {
+test('barbeiro: troca a senha no 1º acesso, vê a casa toda, mas não o financeiro nem os ajustes', async () => {
   const dono = await loginDono()
   assert.equal((await req('POST', '/api/admin/usuarios', { nome: 'Barbeiro 1', email: 'b1@roque.local', senha: 'segredo1', profissionalId: 'p1' }, dono)).status, 201)
-  const b1 = (await req('POST', '/api/admin/login', { email: 'b1@roque.local', senha: 'segredo1' })).json.token
+  const primeiro = (await req('POST', '/api/admin/login', { email: 'b1@roque.local', senha: 'segredo1' })).json
+  assert.equal(primeiro.usuario.trocarSenha, true)
+  // antes de trocar a senha, nada além de /eu e /senha
+  assert.equal((await req('GET', `/api/admin/agenda?data=${TER}`, undefined, primeiro.token)).status, 403)
+  const troca = await req('PUT', '/api/admin/senha', { atual: 'segredo1', nova: 'minhasenha123' }, primeiro.token)
+  assert.equal(troca.status, 200)
+  const b1 = troca.json.token as string
+  assert.equal(troca.json.usuario.trocarSenha, false)
+
   const agenda = (await req('GET', `/api/admin/agenda?data=${TER}`, undefined, b1)).json
   const profs = new Set(agenda.agendamentos.map((a: { profissionalId: string }) => a.profissionalId))
   assert.ok(profs.has('p1') && profs.has('p2'))
   // encaixe na agenda do outro barbeiro
   const enc = await req('POST', '/api/admin/agendamentos', { nome: 'Cliente Balcão', servicoId: 'barba', profissionalId: 'p2', data: TER, hora: '16:00' }, b1)
   assert.equal(enc.status, 201)
+  // vê clientes, avaliações e mensagens…
+  for (const rota of ['/api/admin/retorno', '/api/admin/aniversariantes', '/api/admin/avaliacoes', '/api/admin/mensagens', '/api/admin/pedidos'])
+    assert.equal((await req('GET', rota, undefined, b1)).status, 200, rota)
+  // …mas não o financeiro nem os ajustes
+  assert.equal((await req('GET', `/api/admin/resumo?data=${TER}`, undefined, b1)).status, 403)
   assert.equal((await req('PUT', '/api/admin/servicos/corte', { nome: 'Corte', preco: 1, duracao: 40 }, b1)).status, 403)
+  assert.equal((await req('GET', '/api/admin/usuarios', undefined, dono)).status, 200)
   assert.equal((await req('GET', '/api/admin/usuarios', undefined, b1)).status, 403)
-  const resumo = (await req('GET', `/api/admin/resumo?data=${TER}`, undefined, b1)).json
-  assert.deepEqual(resumo.retorno, [])
-  const usuarios = (await req('GET', '/api/admin/usuarios', undefined, dono)).json as { email: string }[]
-  assert.ok(usuarios.some((u) => u.email === 'b1@roque.local'))
 })
 
 test('agendamento pelo app avisa o WhatsApp da barbearia', async () => {
@@ -180,8 +190,9 @@ test('agendamento pelo app avisa o WhatsApp da barbearia', async () => {
   assert.equal((await req('PUT', '/api/admin/barbearia', { whatsapp: '+55 (27) 98888-7777' }, dono)).status, 200)
   const t = await loginCliente('27995556666', 'Carlos Teste')
   assert.equal((await req('POST', '/api/me/agendamentos', { servicoId: 'corte', profissionalId: 'p2', data: TER, hora: '17:00' }, t)).status, 201)
+  await new Promise((r) => setTimeout(r, 20)) // o aviso sai em segundo plano
   const msgs = (await req('GET', '/api/admin/mensagens', undefined, dono)).json as { tipo: string; telefone: string; texto: string }[]
-  const aviso = msgs.find((m) => m.tipo === 'aviso_novo')
+  const aviso = msgs.find((m) => m.tipo === 'aviso_novo' && m.texto.includes('Carlos Teste'))
   assert.ok(aviso && aviso.telefone === '5527988887777' && aviso.texto.includes('Carlos Teste'))
 })
 
@@ -291,4 +302,23 @@ test('equipe: adicionar barbeiro (já com horário) e excluir', async () => {
   assert.ok(!depois.profissionais.some((p: { id: string }) => p.id === novo.json.id))
   const equipe = (await req('GET', '/api/admin/profissionais', undefined, dono)).json as { id: string }[]
   assert.ok(!equipe.some((p) => p.id === novo.json.id))
+})
+
+test('dono com WhatsApp cadastrado entra só com o código', async () => {
+  const dono = await loginDono()
+  assert.equal((await req('PUT', '/api/admin/seguranca', { senha: 'errada', telefone: '27 99777-1111' }, dono)).status, 400)
+  assert.equal((await req('PUT', '/api/admin/seguranca', { senha: 'senha-teste', telefone: '27 99777-1111' }, dono)).status, 200)
+  const r = (await req('POST', '/api/admin/login', { email: 'dono@roque.local', senha: 'senha-teste' })).json
+  assert.equal(r.etapa, 'codigo')
+  assert.equal(r.token, undefined)
+  // o desafio não serve como acesso
+  assert.equal((await req('GET', '/api/admin/eu', undefined, r.desafio)).status, 403)
+  assert.equal((await req('POST', '/api/admin/login/codigo', { desafio: r.desafio, codigo: r.codigoDemo === '000000' ? '111111' : '000000' })).status, 400)
+  const ok = await req('POST', '/api/admin/login/codigo', { desafio: r.desafio, codigo: r.codigoDemo })
+  assert.equal(ok.status, 200)
+  assert.equal((await req('GET', '/api/admin/resumo', undefined, ok.json.token)).status, 200)
+  const msgs = (await req('GET', '/api/admin/mensagens', undefined, ok.json.token)).json as { tipo: string; telefone: string }[]
+  assert.ok(msgs.some((m) => m.tipo === 'codigo_painel' && m.telefone === '5527997771111'))
+  // desliga de novo para não atrapalhar os outros testes
+  assert.equal((await req('PUT', '/api/admin/seguranca', { senha: 'senha-teste', telefone: null }, ok.json.token)).status, 200)
 })

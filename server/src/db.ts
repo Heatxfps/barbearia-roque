@@ -242,6 +242,8 @@ function migrar(db: DB) {
   garantir('clientes', 'aniversario_ano', 'INTEGER')     // último ano em que ganhou o cupom
   garantir('agendamentos', 'avaliacao_enviada', 'INTEGER NOT NULL DEFAULT 0')
   garantir('agendamentos', 'desconto', 'REAL NOT NULL DEFAULT 0')
+  garantir('usuarios', 'telefone', 'TEXT')                       // WhatsApp do dono: recebe o código de entrada
+  garantir('usuarios', 'trocar_senha', 'INTEGER NOT NULL DEFAULT 0') // barbeiro novo troca a senha no 1º acesso
 }
 
 /** Produtos de exemplo, uma vez só (o dono troca pelo painel). */

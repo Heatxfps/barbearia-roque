@@ -84,9 +84,6 @@ export default function Perfil({ navegar }: { navegar: Navegar }) {
 
       {cliente && <SuaConta />}
 
-      <button className="botao botao--fantasma" onClick={() => navegar('painel')}>
-        <Icone nome="painel" /> Área da barbearia
-      </button>
       <p className="rodape">v1.0 · {api.modo === 'local' ? 'modo demonstração offline' : 'conectado'}</p>
     </div>
   )

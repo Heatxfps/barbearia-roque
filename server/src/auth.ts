@@ -3,7 +3,8 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 
 export type Sessao =
   | { tipo: 'cliente'; id: string }
-  | { tipo: 'admin'; id: string; papel: 'dono' | 'barbeiro'; profissionalId: string | null }
+  | { tipo: 'admin'; id: string; papel: 'dono' | 'barbeiro'; profissionalId: string | null; trocar?: boolean }
+  | { tipo: 'desafio'; id: string; lembrar: boolean }   // login do dono esperando o código do WhatsApp
 
 declare module '@fastify/jwt' {
   interface FastifyJWT { payload: Sessao; user: Sessao }
@@ -17,6 +18,8 @@ export async function exigirCliente(req: FastifyRequest, reply: FastifyReply) {
 export async function exigirAdmin(req: FastifyRequest, reply: FastifyReply) {
   try { await req.jwtVerify() } catch { return reply.status(401).send({ erro: 'Faça login no painel' }) }
   if (req.user.tipo !== 'admin') return reply.status(403).send({ erro: 'Acesso negado' })
+  // primeiro acesso: só deixa ver quem é e trocar a senha
+  if (req.user.trocar && !/\/admin\/(eu|senha)$/.test(req.url.split('?')[0])) return reply.status(403).send({ erro: 'Troque sua senha para continuar' })
 }
 
 export async function exigirDono(req: FastifyRequest, reply: FastifyReply) {

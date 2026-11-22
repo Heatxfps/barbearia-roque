@@ -26,7 +26,8 @@ Os dados de exemplo ficam no servidor: valores iniciais em [`server/src/db.ts`](
 - [ ] Dias de folga de cada um
 - [ ] Texto sobre o Luciano e a história da casa (o da tela "A Roque" é provisório)
 - [ ] Trabalham por comissão? (afeta o painel do dono)
-- [ ] E-mail de cada barbeiro para criar o acesso ao painel (Ajustes → Acessos)
+- [ ] E-mail de cada barbeiro para criar o acesso ao painel (Ajustes → Acessos); no 1º acesso cada um cria a própria senha
+- [ ] WhatsApp do Luciano para o código de entrada do dono (Ajustes → Segurança)
 
 ## Loja, avaliações e aniversário
 

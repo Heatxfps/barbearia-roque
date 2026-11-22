@@ -6,6 +6,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: './',
+  // duas páginas: o app do cliente (index.html) e o painel da equipe (painel.html)
+  build: { rollupOptions: { input: { app: 'index.html', painel: 'painel.html' } } },
   server: {
     proxy: { '/api': 'http://localhost:3333', '/fotos': 'http://localhost:3333' },
   },

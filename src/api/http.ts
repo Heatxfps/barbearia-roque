@@ -1,5 +1,5 @@
 /** Implementação real: conversa com o servidor (pasta server/). */
-import type { Api, Barbearia, Cliente } from './tipos'
+import type { Api, Barbearia, Cliente, UsuarioPainel } from './tipos'
 
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 const CH_CLIENTE = 'roque-token'
@@ -66,11 +66,21 @@ export const apiHttp: Api = {
 
   painel: {
     logado: () => !!ler(CH_PAINEL),
-    async entrar(email, senha) {
-      const r = await chamar<{ token: string; usuario: never }>('POST', '/admin/login', { email, senha })
+    async entrar(email, senha, lembrar) {
+      const r = await chamar<{ token?: string; usuario?: UsuarioPainel; etapa?: 'codigo'; desafio?: string; destino?: string; codigoDemo?: string }>(
+        'POST', '/admin/login', { email, senha, lembrar })
+      if (r.etapa === 'codigo') return { etapa: 'codigo', desafio: r.desafio!, destino: r.destino!, codigoDemo: r.codigoDemo }
+      gravar(CH_PAINEL, r.token!)
+      return { usuario: r.usuario! }
+    },
+    async confirmarCodigo(desafio, codigo) {
+      const r = await chamar<{ token: string; usuario: UsuarioPainel }>('POST', '/admin/login/codigo', { desafio, codigo })
       gravar(CH_PAINEL, r.token)
       return r.usuario
     },
+    retorno: () => p('GET', '/admin/retorno'),
+    aniversariantes: () => p('GET', '/admin/aniversariantes'),
+    salvarSeguranca: async (senha, telefone) => { await p('PUT', '/admin/seguranca', { senha, telefone }) },
     sair: () => gravar(CH_PAINEL, null),
     eu: () => p('GET', '/admin/eu'),
     resumo: (data) => p('GET', `/admin/resumo?${qs({ data })}`),
@@ -99,6 +109,6 @@ export const apiHttp: Api = {
     usuarios: () => p('GET', '/admin/usuarios'),
     criarUsuario: async (d) => { await p('POST', '/admin/usuarios', d) },
     removerUsuario: async (id) => { await p('DELETE', `/admin/usuarios/${id}`) },
-    trocarSenha: async (atual, nova) => { await p('PUT', '/admin/senha', { atual, nova }) },
+    trocarSenha: async (atual, nova) => { gravar(CH_PAINEL, (await p<{ token: string }>('PUT', '/admin/senha', { atual, nova })).token) },
   },
 }

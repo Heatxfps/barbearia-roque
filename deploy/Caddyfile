@@ -1,5 +1,19 @@
 # Caddy pede e renova o certificado HTTPS sozinho (Let's Encrypt, grátis).
+
+# App do cliente
 {$DOMINIO} {
 	encode gzip zstd
+	# o painel da equipe não fica no endereço do app: vai para o subdomínio próprio
+	redir /painel* https://painel.{$DOMINIO}/ 302
+	reverse_proxy roque:3333
+}
+
+# Painel da equipe (agenda, clientes, loja, resultados…)
+# Com sslip.io funciona sozinho; com domínio próprio, crie também o registro A "painel".
+painel.{$DOMINIO} {
+	encode gzip zstd
+	header X-Robots-Tag "noindex, nofollow"
+	@raiz path /
+	rewrite @raiz /painel.html
 	reverse_proxy roque:3333
 }

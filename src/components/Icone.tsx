@@ -14,6 +14,8 @@ const caminhos: Record<string, string> = {
   painel: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   mais: 'M12 5v14M5 12h14',
   seta: 'M9 5l7 7-7 7',
+  menu: 'M4 7h16M4 12h16M4 17h16',
+  ajustes: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4',
   sacola: 'M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2',
   estrela: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z',
   lixo: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13',

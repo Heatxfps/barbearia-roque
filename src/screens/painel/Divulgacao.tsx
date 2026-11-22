@@ -12,7 +12,8 @@ const B = import.meta.env.BASE_URL
 
 export default function Divulgacao() {
   const { barbearia, avisar } = useApp()
-  const link = new URL(B, location.origin).href
+  // o painel fica em outro endereço: o link divulgado é sempre o do app do cliente
+  const link = (barbearia?.urlApp ? `${barbearia.urlApp.replace(/\/$/, '')}/` : new URL('./', location.href).href)
   const [qr, setQr] = useState('')
 
   useEffect(() => {
