@@ -14,7 +14,7 @@ const rede = Object.values(networkInterfaces()).flat().filter((i) => i && i.fami
 console.log(`\n✂️  Barbearia Roque  (WhatsApp: ${config.whatsapp.modo})`)
 console.log(`   Neste computador:          http://localhost:${config.porta}`)
 for (const r of rede) console.log(`   No celular (mesmo Wi-Fi):  ${r}`)
-console.log('   Painel: acrescente /#painel no endereço\n')
+console.log('   Painel da equipe: acrescente /painel no endereço\n')
 
 for (const sinal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sinal, async () => { await app.close(); db.close(); process.exit(0) })

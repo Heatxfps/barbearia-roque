@@ -122,6 +122,44 @@ function SuaConta() {
         )}
         <button className="botao botao--fantasma pequeno" onClick={() => { api.sair(); definirCliente(null) }}>Sair</button>
       </section>
+      <SeusDados />
     </>
+  )
+}
+
+/** Privacidade: o que a barbearia guarda, para que serve, baixar e apagar */
+function SeusDados() {
+  const { barbearia, definirCliente, avisar, confirmar } = useApp()
+  const [aberto, setAberto] = useState(false)
+  const casa = barbearia?.nome ?? 'A barbearia'
+  const baixar = async () => {
+    try {
+      const dados = await api.meusDados()
+      const url = URL.createObjectURL(new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' }))
+      const a = document.createElement('a'); a.href = url; a.download = 'meus-dados-roque.json'; a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (e) { avisar((e as Error).message, 'erro') }
+  }
+  const apagar = async () => {
+    if (!(await confirmar('Apagar sua conta? Seus horários marcados são cancelados e seu nome, WhatsApp, aniversário, selos e mensagens são apagados. Não dá para desfazer.', { botao: 'Apagar conta' }))) return
+    try { await api.excluirConta(); definirCliente(null); avisar('Conta apagada') } catch (e) { avisar((e as Error).message, 'erro') }
+  }
+  return (
+    <section className="cartao">
+      <button className="item item--compacto" aria-expanded={aberto} onClick={() => setAberto(!aberto)}>
+        <span>🔒 Seus dados e privacidade</span>
+        <span className="suave pequeno">{aberto ? 'fechar' : 'ver'}</span>
+      </button>
+      {aberto && (
+        <div className="privacidade">
+          <p className="suave pequeno">{casa} guarda seu <strong>nome</strong>, <strong>WhatsApp</strong>, <strong>aniversário</strong> (se você cadastrou), seus <strong>horários</strong>, <strong>avaliações</strong> e <strong>pedidos</strong>.</p>
+          <p className="suave pequeno">Serve só para agendar, lembrar do seu horário, dar os selos e o desconto de aniversário. Nada é vendido nem compartilhado, e o app não usa rastreamento, anúncios nem fontes ou scripts de terceiros. As mensagens do WhatsApp ficam guardadas por 6 meses.</p>
+          <div className="acoes">
+            <button className="botao botao--fantasma pequeno" onClick={baixar}>Baixar meus dados</button>
+            <button className="botao botao--perigo pequeno" onClick={apagar}>Apagar minha conta</button>
+          </div>
+        </div>
+      )}
+    </section>
   )
 }

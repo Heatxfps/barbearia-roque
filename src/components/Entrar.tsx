@@ -9,12 +9,11 @@ import CampoAniversario, { aniversarioOk } from './CampoAniversario'
 
 export default function Entrar({ aoEntrar, textoBotao = 'Receber código no WhatsApp' }: { aoEntrar: (c: Cliente) => void; textoBotao?: string }) {
   const { avisar, definirCliente, barbearia } = useApp()
-  const [etapa, setEtapa] = useState<'telefone' | 'codigo'>('telefone')
+  const [etapa, setEtapa] = useState<'telefone' | 'codigo' | 'cadastro'>('telefone')
   const [tel, setTel] = useState('')
   const [nome, setNome] = useState('')
   const [aniversario, setAniversario] = useState('')
   const [codigo, setCodigo] = useState('')
-  const [jaCliente, setJaCliente] = useState(false)
   const [demo, setDemo] = useState<string | undefined>()
   const [carregando, setCarregando] = useState(false)
 
@@ -24,7 +23,6 @@ export default function Entrar({ aoEntrar, textoBotao = 'Receber código no What
     setCarregando(true)
     try {
       const r = await api.pedirCodigo(tel)
-      setJaCliente(r.jaCliente)
       setDemo(r.codigoDemo)
       if (r.codigoDemo) setCodigo(r.codigoDemo)
       setEtapa('codigo')
@@ -35,6 +33,7 @@ export default function Entrar({ aoEntrar, textoBotao = 'Receber código no What
     setCarregando(true)
     try {
       const c = await api.verificar(tel, codigo, nome.trim() || undefined, aniversarioOk(aniversario) ? aniversario : undefined)
+      if ('novo' in c) { setEtapa('cadastro'); return }  // 1ª vez: pede o nome (o código continua valendo)
       definirCliente(c)
       aoEntrar(c)
     } catch (e) { avisar((e as Error).message, 'erro') } finally { setCarregando(false) }
@@ -53,6 +52,28 @@ export default function Entrar({ aoEntrar, textoBotao = 'Receber código no What
     )
   }
 
+  if (etapa === 'cadastro') {
+    return (
+      <div className="entrar">
+        <p className="suave">Primeira vez por aqui? Falta só o seu nome.</p>
+        <label className="campo">
+          <span>Seu nome</span>
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Como podemos te chamar?" autoComplete="name" autoCapitalize="words" autoFocus />
+        </label>
+        {barbearia?.descontoAniversario ? (
+          <>
+            <CampoAniversario valor={aniversario} mudar={setAniversario} />
+            <p className="suave pequeno">🎂 Opcional. No seu aniversário você ganha {barbearia.descontoAniversario}% de desconto.</p>
+          </>
+        ) : null}
+        <p className="suave pequeno">A {barbearia?.nome ?? 'barbearia'} guarda seu nome, WhatsApp{barbearia?.descontoAniversario ? ', aniversário' : ''} e seus horários só para agendar e avisar você. Nada é vendido nem compartilhado. Você pode apagar tudo em A Roque → Seus dados.</p>
+        <button className="botao botao--principal" disabled={nome.trim().length < 2 || (!!aniversario && !aniversarioOk(aniversario)) || carregando} onClick={verificar}>
+          {carregando ? 'Criando…' : 'Continuar'}
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="entrar">
       {demo && (
@@ -61,23 +82,11 @@ export default function Entrar({ aoEntrar, textoBotao = 'Receber código no What
           <p>Na versão final o código chega no WhatsApp. Aqui ele já veio preenchido: <strong>{demo}</strong></p>
         </div>
       )}
-      {!jaCliente && (
-        <label className="campo">
-          <span>Seu nome</span>
-          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Como podemos te chamar?" autoComplete="name" />
-        </label>
-      )}
-      {!jaCliente && barbearia?.descontoAniversario ? (
-        <>
-          <CampoAniversario valor={aniversario} mudar={setAniversario} />
-          <p className="suave pequeno">🎂 No seu aniversário você ganha {barbearia.descontoAniversario}% de desconto.</p>
-        </>
-      ) : null}
       <label className="campo">
         <span>Código de 6 dígitos</span>
         <input className="campo-codigo" value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="••••••" />
       </label>
-      <button className="botao botao--principal" disabled={codigo.length !== 6 || (!jaCliente && nome.trim().length < 2) || carregando} onClick={verificar}>
+      <button className="botao botao--principal" disabled={codigo.length !== 6 || carregando} onClick={verificar}>
         {carregando ? 'Conferindo…' : 'Confirmar'}
       </button>
       <button className="link" onClick={() => { setEtapa('telefone'); setCodigo('') }}>Trocar número</button>

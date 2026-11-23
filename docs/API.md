@@ -13,8 +13,10 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 | GET | `/barbearia` | Nome, contatos, horário de funcionamento, serviços, profissionais e regras |
 | GET | `/dias?servico=&profissional=` | Próximos dias de expediente com a quantidade de horários livres |
 | GET | `/horarios?data=&servico=&profissional=` | Horários livres. `profissional=qualquer` junta todos |
-| POST | `/auth/codigo` `{ telefone }` | Manda um código de 6 dígitos no WhatsApp. No modo `demo` devolve `codigoDemo` |
-| POST | `/auth/verificar` `{ telefone, codigo, nome? }` | Confere o código e devolve `{ token, cliente }`. `nome` é obrigatório no primeiro acesso |
+| POST | `/auth/codigo` `{ telefone }` | Manda um código de 6 dígitos no WhatsApp. Não diz se o número já é cliente. No modo `demo` devolve `codigoDemo` |
+| POST | `/auth/verificar` `{ telefone, codigo, nome? }` | Confere o código e devolve `{ token, cliente }`. Se for a 1ª vez e vier sem `nome`, devolve `{ novo: true }` (o código continua valendo) |
+| GET | `/me/dados` | Tudo o que a barbearia guarda sobre o cliente (para baixar) |
+| DELETE | `/me` | Apaga a conta: cancela os horários marcados e remove nome, WhatsApp, aniversário, mensagens e comentários |
 
 ### Públicas (v1.2)
 
@@ -101,6 +103,11 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 - **Aviso para a barbearia**: cada horário marcado ou cancelado pelo cliente no app gera uma mensagem no WhatsApp da própria barbearia (desligue com `AVISAR_BARBEARIA=0`)
 
 ## Segurança
+
+- Cabeçalhos em todas as respostas: CSP só com o próprio app (sem scripts, estilos ou fontes de terceiros), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` (sem câmera, microfone, localização); HSTS no Caddy
+- Fontes servidas pelo próprio app (nada é carregado do Google ou de outro serviço)
+- Log do servidor sem dados pessoais (só método e caminho, sem parâmetros nem IP)
+- Retenção: códigos vencidos apagados na hora; mensagens do WhatsApp guardadas por 6 meses
 
 - Código de login com validade de 10 min, máximo de 5 tentativas e intervalo mínimo de 45 s entre pedidos
 - Limite de requisições por IP (geral e mais rígido no login)

@@ -113,8 +113,11 @@ export interface Api {
   dias(servicoId: string, profissionalId: string): Promise<Dia[]>
   horarios(data: string, servicoId: string, profissionalId: string): Promise<string[]>
 
-  pedirCodigo(telefone: string): Promise<{ jaCliente: boolean; codigoDemo?: string }>
-  verificar(telefone: string, codigo: string, nome?: string, aniversario?: string): Promise<Cliente>
+  pedirCodigo(telefone: string): Promise<{ codigoDemo?: string }>
+  /** código certo: entra; se for a 1ª vez e sem nome, devolve { novo: true } para o app pedir o nome */
+  verificar(telefone: string, codigo: string, nome?: string, aniversario?: string): Promise<Cliente | { novo: true }>
+  meusDados(): Promise<unknown>
+  excluirConta(): Promise<void>
   eu(): Promise<Cliente | null>
   sair(): void
   atualizarPerfil(d: { nome?: string; aniversario?: string | null }): Promise<void>

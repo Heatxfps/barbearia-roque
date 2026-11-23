@@ -17,12 +17,33 @@ import { rotasAdmin } from './rotas/admin.ts'
 import './auth.ts'
 
 export async function criarApp(db: DB, opcoes: { logger?: boolean } = {}) {
-  const app = Fastify({ logger: opcoes.logger ?? false, trustProxy: true })
+  // log sem dados pessoais: grava só método e caminho (sem ?busca=telefone, sem IP, sem cabeçalhos)
+  const app = Fastify({
+    trustProxy: true,
+    logger: opcoes.logger ? { serializers: { req: (r) => ({ method: r.method, url: r.url.split('?')[0] }), res: (r) => ({ statusCode: r.statusCode }) } } : false,
+  })
 
   await app.register(cors, { origin: config.origemApp === '*' ? true : config.origemApp.split(',') })
   await app.register(jwt, { secret: config.jwtSegredo })
   // LIMITE_TENTATIVAS=0 desliga os limites (só nos testes automáticos)
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute', allowList: () => process.env.LIMITE_TENTATIVAS === '0' })
+
+  // cabeçalhos de segurança em todas as respostas
+  //  - CSP: só carrega script, estilo, fonte e imagem do próprio app (sem terceiros)
+  //  - frame-ancestors/X-Frame-Options: ninguém embute o app ou o painel em outro site
+  //  - Permissions-Policy: o app não usa câmera, microfone nem localização
+  const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:",
+    "font-src 'self'", "media-src 'self'", "connect-src 'self'", "manifest-src 'self'", "worker-src 'self'",
+    "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'", "object-src 'none'"].join('; ')
+  app.addHook('onSend', async (req, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff')
+    reply.header('X-Frame-Options', 'DENY')
+    reply.header('Referrer-Policy', 'strict-origin-when-cross-origin')
+    reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()')
+    reply.header('Cross-Origin-Opener-Policy', 'same-origin')
+    if (req.url.startsWith('/api')) reply.header('Cache-Control', 'no-store')
+    else reply.header('Content-Security-Policy', CSP)
+  })
 
   app.setErrorHandler((erro, _req, reply) => {
     if (erro instanceof ErroNegocio) return reply.status(erro.status).send({ erro: erro.message })

@@ -69,6 +69,7 @@ export async function rodarTarefas(db: DB) {
   }
 
   await rodarAutomacoes(db)
+  limparDados(db)
   vencerConvites(db)
   await cupomVencendo(db)
   await pedidoParado(db)
@@ -189,6 +190,14 @@ async function rodarAutomacoes(db: DB) {
       await enviarWhatsApp(db, a.telefone, 'automacao', texto, a.id)
     }
   }
+}
+
+/** Privacidade: não guarda o que não precisa.
+ *  - códigos de acesso vencidos saem na hora
+ *  - histórico de mensagens do WhatsApp fica 6 meses (tem nome e telefone do cliente) */
+export function limparDados(db: DB) {
+  db.prepare('DELETE FROM codigos WHERE expira_em < ?').run(Date.now() - 60_000)
+  db.prepare('DELETE FROM mensagens WHERE criado_em < ?').run(carimbo(somarMin(agora(), -180 * 1440)))
 }
 
 /** Cupom de aniversário perto de vencer: quem não usou e não tem horário marcado (uma vez por cupom). */

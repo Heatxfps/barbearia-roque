@@ -37,10 +37,13 @@ export const apiHttp: Api = {
 
   pedirCodigo: (telefone) => chamar('POST', '/auth/codigo', { telefone }),
   async verificar(telefone, codigo, nome, aniversario) {
-    const r = await chamar<{ token: string }>('POST', '/auth/verificar', { telefone, codigo, nome, aniversario })
-    gravar(CH_CLIENTE, r.token)
+    const r = await chamar<{ token?: string; novo?: true }>('POST', '/auth/verificar', { telefone, codigo, nome, aniversario })
+    if (r.novo) return { novo: true }
+    gravar(CH_CLIENTE, r.token!)
     return chamar<Cliente>('GET', '/me')
   },
+  meusDados: () => chamar('GET', '/me/dados'),
+  excluirConta: async () => { await chamar('DELETE', '/me'); gravar(CH_CLIENTE, null) },
   async eu() {
     if (!ler(CH_CLIENTE)) return null
     try { return await chamar<Cliente>('GET', '/me') } catch { return null }

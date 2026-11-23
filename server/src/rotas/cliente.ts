@@ -17,7 +17,13 @@ const moeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curr
 
 export async function rotasCliente(app: FastifyInstance, db: DB) {
   app.addHook('onRequest', async (req, reply) => {
-    if (req.url.startsWith('/api/me')) await exigirCliente(req, reply)
+    if (!req.url.startsWith('/api/me')) return
+    await exigirCliente(req, reply)
+    if (reply.sent) return
+    // conta apagada: o login antigo deixa de valer
+    const id = (req.user as { id?: string } | undefined)?.id
+    if (id && db.prepare("SELECT 1 FROM clientes WHERE id = ? AND telefone LIKE 'balcao-removido-%'").get(id))
+      return reply.status(401).send({ erro: 'Conta removida' })
   })
 
   const idCliente = (u: unknown) => (u as { id: string }).id
@@ -145,6 +151,46 @@ export async function rotasCliente(app: FastifyInstance, db: DB) {
     const txtCasa = montar(db, 'aviso_pedido', { nome: c.nome, telefone: c.telefone, itens: resumo + (b.observacao ? `\nObs.: ${b.observacao}` : ''), total: moeda(total) })
     if (txtCasa) void avisarBarbeariaTexto(db, 'aviso_pedido', txtCasa)
     return reply.status(201).send({ id: pedidoId, total })
+  })
+
+  /** Privacidade: tudo o que a barbearia guarda sobre o cliente (para baixar) */
+  app.get('/me/dados', async (req) => {
+    const id = idCliente(req.user)
+    const c = db.prepare('SELECT nome, telefone, aniversario, criado_em AS criadoEm FROM clientes WHERE id = ?').get(id)
+    if (!c) throw new ErroNegocio('Cliente não encontrado', 401)
+    const tel = (c as { telefone: string }).telefone
+    return {
+      geradoEm: carimbo(agora()),
+      cadastro: c,
+      horarios: db.prepare(`SELECT a.inicio, s.nome AS servico, p.nome AS barbeiro, a.preco, a.status FROM agendamentos a
+                            JOIN servicos s ON s.id = a.servico_id JOIN profissionais p ON p.id = a.profissional_id WHERE a.cliente_id = ? ORDER BY a.inicio`).all(id),
+      avaliacoes: db.prepare('SELECT nota, comentario, criado_em AS criadoEm FROM avaliacoes WHERE cliente_id = ?').all(id),
+      cupons: db.prepare('SELECT motivo, desconto_pct AS desconto, valido_ate AS validoAte FROM cupons WHERE cliente_id = ?').all(id),
+      pedidos: db.prepare('SELECT status, total, criado_em AS criadoEm FROM pedidos WHERE cliente_id = ?').all(id),
+      listaDeEspera: db.prepare('SELECT data FROM espera WHERE cliente_id = ?').all(id),
+      mensagensWhatsApp: db.prepare('SELECT tipo, texto, criado_em AS criadoEm FROM mensagens WHERE telefone = ? ORDER BY criado_em').all(tel),
+    }
+  })
+
+  /** Privacidade: apagar a conta. Nome, WhatsApp, aniversário, mensagens e avaliações somem;
+   *  os horários passados ficam só como número no caixa da barbearia, sem dizer de quem eram. */
+  app.delete('/me', async (req) => {
+    const id = idCliente(req.user)
+    const c = db.prepare('SELECT telefone FROM clientes WHERE id = ?').get(id) as { telefone: string } | undefined
+    if (!c) throw new ErroNegocio('Cliente não encontrado', 401)
+    const futuros = db.prepare("SELECT id FROM agendamentos WHERE cliente_id = ? AND status = 'confirmado' AND inicio > ?").all(id, carimbo(agora())) as { id: string }[]
+    for (const a of futuros) cancelarAgendamento(db, a.id, undefined, true)
+    transacao(db, () => {
+      db.prepare('DELETE FROM mensagens WHERE telefone = ?').run(c.telefone)
+      db.prepare('DELETE FROM codigos WHERE telefone = ?').run(c.telefone)
+      db.prepare('DELETE FROM espera WHERE cliente_id = ?').run(id)
+      db.prepare('DELETE FROM cupons WHERE cliente_id = ?').run(id)
+      db.prepare("UPDATE avaliacoes SET comentario = '' WHERE cliente_id = ?").run(id)
+      db.prepare("UPDATE pedidos SET status = 'cancelado', observacao = '' WHERE cliente_id = ? AND status IN ('novo','separado')").run(id)
+      db.prepare("UPDATE clientes SET nome = 'Cliente removido', telefone = ?, aniversario = NULL, aniversario_ano = NULL, aviso_retorno_em = NULL WHERE id = ?")
+        .run(`balcao-removido-${id}`, id) // "balcao-" = sem WhatsApp: nenhuma mensagem automática vai para ele
+    })
+    return { ok: true }
   })
 
   app.post('/me/pedidos/:id/cancelar', async (req) => {

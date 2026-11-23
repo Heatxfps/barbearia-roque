@@ -467,3 +467,35 @@ test('pontos de contato: barbearia desmarca, faltou, remarcar sem comprovante, n
   const lem = ((await req('GET', '/api/admin/lembretes', undefined, dono)).json as { id: string; manual: { estado: string } | null }[]).find((x) => x.id === a5)!
   assert.equal(lem.manual?.estado, 'enviada')
 })
+
+test('privacidade: login não revela quem é cliente; cliente baixa e apaga os próprios dados', async () => {
+  relogio = new Date(2030, 2, 4, 8, 0)
+  // pedir código não diz se o número já é cliente
+  const c1 = await req('POST', '/api/auth/codigo', { telefone: '27996663001' })
+  assert.equal(c1.status, 200)
+  assert.equal('jaCliente' in c1.json, false)
+  // código certo sem nome, 1ª vez: pede o nome e o código continua valendo
+  const v1 = await req('POST', '/api/auth/verificar', { telefone: '27996663001', codigo: c1.json.codigoDemo })
+  assert.deepEqual(v1.json, { novo: true })
+  const v2 = await req('POST', '/api/auth/verificar', { telefone: '27996663001', codigo: c1.json.codigoDemo, nome: 'Paulo Privado' })
+  assert.ok(v2.json.token)
+  const t = v2.json.token as string
+  // cabeçalhos de segurança
+  const h = await app.inject({ method: 'GET', url: '/api/barbearia' })
+  assert.equal(h.headers['x-frame-options'], 'DENY')
+  assert.equal(h.headers['x-content-type-options'], 'nosniff')
+
+  const a = await req('POST', '/api/me/agendamentos', { servicoId: 'corte', profissionalId: 'p1', data: '2030-03-08', hora: '17:00' }, t)
+  assert.equal(a.status, 201)
+  // baixar dados
+  const dados = (await req('GET', '/api/me/dados', undefined, t)).json
+  assert.equal(dados.cadastro.nome, 'Paulo Privado')
+  assert.equal(dados.horarios.length, 1)
+  // apagar conta: horário cancelado, dados pessoais somem, login antigo para de valer
+  assert.equal((await req('DELETE', '/api/me', undefined, t)).status, 200)
+  assert.equal((await req('GET', '/api/me', undefined, t)).status, 401)
+  const c = db.prepare("SELECT nome, telefone, aniversario FROM clientes WHERE telefone LIKE 'balcao-removido-%'").get() as { nome: string; aniversario: string | null }
+  assert.equal(c.nome, 'Cliente removido')
+  assert.equal((db.prepare('SELECT status FROM agendamentos WHERE id = ?').get(a.json.id) as { status: string }).status, 'cancelado')
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM mensagens WHERE telefone = '5527996663001'").get() as { n: number }).n, 0)
+})

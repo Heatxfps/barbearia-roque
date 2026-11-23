@@ -232,7 +232,7 @@ export const apiLocal: Api = {
     banco.codigo = { telefone: tel, codigo }
     msg(tel, 'codigo', `*Barbearia Roque*\nSeu código de acesso é *${codigo}*.`)
     salvar()
-    return { jaCliente: banco.clientes.some((c) => c.telefone.endsWith(tel)), codigoDemo: codigo }
+    return { codigoDemo: codigo }
   },
   async verificar(telefone, codigo, nome, aniversario) {
     await espera()
@@ -240,7 +240,7 @@ export const apiLocal: Api = {
     if (!banco.codigo || banco.codigo.telefone !== tel || banco.codigo.codigo !== codigo) throw new Error('Código incorreto')
     let c = banco.clientes.find((x) => x.telefone.endsWith(tel))
     if (!c) {
-      if (!nome) throw new Error('Informe seu nome')
+      if (!nome) return { novo: true as const }
       c = { id: id(), nome, telefone: '55' + tel, aniversario: aniversario ?? null }
       banco.clientes.push(c)
     } else if (nome) c.nome = nome
@@ -250,6 +250,21 @@ export const apiLocal: Api = {
     return eu()!
   },
   async eu() { return eu() },
+  async meusDados() {
+    const c = banco.sessao ? cliente(banco.sessao) : undefined
+    if (!c) throw new Error('Entre de novo')
+    return { cadastro: c, horarios: banco.agendamentos.filter((a) => a.clienteId === c.id).map(paraAgendamento), pedidos: (banco.pedidos ?? []).filter((o) => o.clienteId === c.id) }
+  },
+  async excluirConta() {
+    const c = banco.sessao ? cliente(banco.sessao) : undefined
+    if (!c) return
+    banco.mensagens = banco.mensagens.filter((m) => !m.telefone.endsWith(c.telefone.slice(-8)))
+    banco.espera = (banco.espera ?? []).filter((e) => e.clienteId !== c.id)
+    banco.agendamentos.filter((a) => a.clienteId === c.id && a.status === 'confirmado').forEach((a) => { a.status = 'cancelado' })
+    Object.assign(c, { nome: 'Cliente removido', telefone: `balcao-removido-${c.id}`, aniversario: null })
+    banco.sessao = undefined
+    salvar()
+  },
   sair() { banco.sessao = undefined; salvar() },
   async atualizarPerfil(d) {
     const c = banco.sessao ? cliente(banco.sessao) : undefined

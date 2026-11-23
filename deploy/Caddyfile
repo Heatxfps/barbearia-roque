@@ -3,6 +3,9 @@
 # App do cliente
 {$DOMINIO} {
 	encode gzip zstd
+	# só HTTPS daqui para a frente (o navegador lembra por 1 ano)
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header -Server
 	# o painel da equipe não fica no endereço do app: vai para o subdomínio próprio
 	redir /painel* https://painel.{$DOMINIO}/ 302
 	reverse_proxy roque:3333
@@ -12,6 +15,8 @@
 # Com sslip.io funciona sozinho; com domínio próprio, crie também o registro A "painel".
 painel.{$DOMINIO} {
 	encode gzip zstd
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header -Server
 	header X-Robots-Tag "noindex, nofollow"
 	@raiz path /
 	rewrite @raiz /painel.html

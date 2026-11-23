@@ -130,13 +130,13 @@ export async function rotasPublicas(app: FastifyInstance, db: DB) {
       .run(tel, hashCodigo(tel, codigo), Date.now() + 10 * 60_000, Date.now())
     await enviarWhatsApp(db, tel, 'codigo', textos.codigo(codigo, lerBarbearia(db).nome))
 
-    const jaCliente = !!db.prepare('SELECT 1 FROM clientes WHERE telefone = ?').get(tel)
+    // não diz se o número já é cliente: isso só aparece depois do código certo (evita descobrir quem é cliente)
     // no modo demonstração o código volta na resposta (não há WhatsApp conectado)
-    return { enviado: true, jaCliente, ...(config.whatsapp.modo === 'demo' ? { codigoDemo: codigo } : {}) }
+    return { enviado: true, ...(config.whatsapp.modo === 'demo' ? { codigoDemo: codigo } : {}) }
   })
 
   /** 2º passo: confere o código e devolve o token de acesso */
-  app.post('/auth/verificar', async (req) => {
+  app.post('/auth/verificar', { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async (req) => {
     const body = z.object({
       telefone: z.string(), codigo: z.string().regex(/^\d{6}$/), nome: z.string().trim().min(2).max(60).optional(),
       aniversario: z.string().refine(aniversarioValido).optional(),
@@ -151,12 +151,12 @@ export async function rotasPublicas(app: FastifyInstance, db: DB) {
       db.prepare('UPDATE codigos SET tentativas = tentativas + 1 WHERE telefone = ?').run(tel)
       throw new ErroNegocio('Código incorreto')
     }
-    db.prepare('DELETE FROM codigos WHERE telefone = ?').run(tel)
-
     let cliente = db.prepare('SELECT id, nome, telefone FROM clientes WHERE telefone = ?').get(tel) as { id: string; nome: string; telefone: string } | undefined
+    // código certo, mas é a 1ª vez: o app pede o nome e manda de novo (o código continua valendo)
+    if (!cliente && !body.nome) return { novo: true }
+    db.prepare('DELETE FROM codigos WHERE telefone = ?').run(tel)
     if (!cliente) {
-      if (!body.nome) throw new ErroNegocio('Informe seu nome')
-      cliente = { id: novoId(), nome: body.nome, telefone: tel }
+      cliente = { id: novoId(), nome: body.nome!, telefone: tel }
       db.prepare('INSERT INTO clientes (id, nome, telefone, criado_em, aniversario) VALUES (?, ?, ?, ?, ?)').run(cliente.id, cliente.nome, tel, carimbo(agora()), body.aniversario ?? null)
     } else if (body.nome && body.nome !== cliente.nome) {
       db.prepare('UPDATE clientes SET nome = ? WHERE id = ?').run(body.nome, cliente.id)

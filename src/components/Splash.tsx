@@ -4,7 +4,7 @@
  * tesoura e ROQUE), terminando com um brilho metálico.
  * As peças são geradas por tools/separar_logo.py.
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 const B = import.meta.env.BASE_URL
 const parte = (n: string) => `${B}logo-partes/${n}.png`
@@ -39,10 +39,15 @@ export default function Splash({ onFim }: Props) {
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [pronto, onFim])
 
-  const pular = () => { setSaindo(true); setTimeout(onFim, 450) }
+  const pular = useCallback(() => { setSaindo(true); setTimeout(onFim, 450) }, [onFim])
+  // dá para pular a qualquer momento: toque, clique, Esc, Enter ou espaço
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => { if (['Escape', 'Enter', ' '].includes(e.key)) { e.preventDefault(); pular() } }
+    window.addEventListener('keydown', tecla); return () => window.removeEventListener('keydown', tecla)
+  }, [pular])
 
   return (
-    <div className={`splash ${pronto ? 'splash--pronto' : ''} ${saindo ? 'splash--saindo' : ''}`} onClick={pular} role="img" aria-label="Barbearia Roque">
+    <div className={`splash ${pronto ? 'splash--pronto' : ''} ${saindo ? 'splash--saindo' : ''}`} onClick={pular} role="button" tabIndex={0} aria-label="Barbearia Roque. Toque para entrar">
       <div className="splash__palco">
       <div className="splash__fundo" style={{ backgroundImage: `url(${B}img/parede-sem-letreiro.jpg)` }} />
       <div className="splash__luz splash__luz--1" />

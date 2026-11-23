@@ -3,6 +3,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { ProvedorApp } from './contexto'
 import Painel from './screens/painel/Painel'
+import './fontes'
 import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

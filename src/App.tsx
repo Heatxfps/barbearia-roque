@@ -25,16 +25,17 @@ function modalDoEndereco(): Modal {
   return m ? { tipo: m[1] as 'avaliar' | 'adiantar', id: m[2] } : null
 }
 
-const lerSessao = (k: string) => { try { return sessionStorage.getItem(k) } catch { return null } }
+/** o splash completo aparece só na 1ª vez neste aparelho; depois o app abre direto */
+const splashVisto = () => { try { return !!localStorage.getItem('roque-splash-visto') } catch { return true } }
 
 function Conteudo() {
   const { barbearia, erroCarga, recarregar } = useApp()
-  const [splash, setSplash] = useState(() => !lerSessao('roque-splash') && !modalDoEndereco())
+  const [splash, setSplash] = useState(() => !splashVisto() && !modalDoEndereco())
   const [aba, setAba] = useState<Aba>('inicio')
   const [modal, setModal] = useState<Modal>(modalDoEndereco)
 
   const fimSplash = useCallback(() => {
-    try { sessionStorage.setItem('roque-splash', '1') } catch { /* ok */ }
+    try { localStorage.setItem('roque-splash-visto', '1') } catch { /* ok */ }
     setSplash(false)
   }, [])
 
