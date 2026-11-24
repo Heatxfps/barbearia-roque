@@ -30,8 +30,10 @@ function modalDoEndereco(): Modal {
   return m ? { tipo: m[1] as 'avaliar' | 'adiantar', id: m[2] } : null
 }
 
-/** o splash completo aparece só na 1ª vez neste aparelho; depois o app abre direto */
-const splashVisto = () => { try { return !!localStorage.getItem('roque-splash-visto') } catch { return true } }
+/** o splash completo aparece só na 1ª vez neste aparelho; depois o app abre direto.
+ *  Na demonstração (vitrine), aparece a cada aba nova: quem recebe o link sempre vê a abertura. */
+const guardaSplash = () => (import.meta.env.VITE_MODO === 'local' ? sessionStorage : localStorage)
+const splashVisto = () => { try { return !!guardaSplash().getItem('roque-splash-visto') } catch { return true } }
 
 function Conteudo() {
   const { barbearia, erroCarga, recarregar } = useApp()
@@ -41,7 +43,7 @@ function Conteudo() {
   const [modal, setModal] = useState<Modal>(modalDoEndereco)
 
   const fimSplash = useCallback(() => {
-    try { localStorage.setItem('roque-splash-visto', '1') } catch { /* ok */ }
+    try { guardaSplash().setItem('roque-splash-visto', '1') } catch { /* ok */ }
     setSplash(false)
   }, [])
 
