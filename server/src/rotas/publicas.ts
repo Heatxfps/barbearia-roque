@@ -13,6 +13,7 @@ import { montar } from '../mensagens.ts'
 import { enviarWhatsApp } from '../whatsapp.ts'
 import { aniversarioValido } from './cliente.ts'
 import { textos } from '../textos.ts'
+import { ETAPA, infoRetomada, registrarPasso } from '../funil.ts'
 
 const hashCodigo = (tel: string, c: string) => createHash('sha256').update(`${tel}:${c}:${config.jwtSegredo}`).digest('hex')
 
@@ -92,6 +93,30 @@ export async function rotasPublicas(app: FastifyInstance, db: DB) {
   app.post('/adiantar/:id', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req) => {
     const { id } = z.object({ id: z.string().max(40) }).parse(req.params)
     return aceitarAdiantar(db, id)
+  })
+
+  /** Funil: o app avisa cada passo da visita (abriu, escolheu serviço, barbeiro, horário, confirmar).
+   *  Não tem dados pessoais; se a pessoa estiver logada, a visita fica ligada ao cadastro dela (para a retomada). */
+  app.post('/funil', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req) => {
+    const b = z.object({
+      visita: z.string().regex(/^[a-f0-9]{16}$/), origem: z.string().max(40).optional(),
+      etapa: z.number().int().min(ETAPA.abriu).max(ETAPA.confirmar),
+      servicoId: z.string().max(40).optional(), profissionalId: z.string().max(40).optional(),
+      data: z.string().refine(dataValida).optional(), hora: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    }).parse(req.body)
+    let clienteId: string | null = null
+    try { await req.jwtVerify(); if (req.user.tipo === 'cliente') clienteId = req.user.id } catch { /* visitante sem login */ }
+    if (clienteId && !db.prepare("SELECT 1 FROM clientes WHERE id = ? AND telefone NOT LIKE 'balcao-%'").get(clienteId)) clienteId = null
+    registrarPasso(db, { ...b, clienteId })
+    return { ok: true }
+  })
+
+  /** Link da mensagem "faltou terminar": reabre o agendamento onde a pessoa parou */
+  app.get('/retomar/:id', async (req) => {
+    const { id } = z.object({ id: z.string().regex(/^[a-f0-9]{16}$/) }).parse(req.params)
+    const r = infoRetomada(db, id)
+    if (!r) throw new ErroNegocio('Link não encontrado', 404)
+    return r
   })
 
   /** Próximos dias com expediente e se ainda há vaga */

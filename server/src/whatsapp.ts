@@ -11,7 +11,7 @@ import { config } from './config.ts'
 import { agora, carimbo } from './tempo.ts'
 
 export type TipoMensagem = 'codigo' | 'confirmacao' | 'lembrete_24h' | 'lembrete_1h' | 'cancelamento' | 'retorno' | 'aviso_novo' | 'aviso_cancelou' | 'avaliacao' | 'aniversario' | 'espera' | 'pedido' | 'pedido_separado' | 'aviso_pedido' | 'codigo_painel' | 'automacao'
-  | 'cancelamento_casa' | 'adiantar' | 'faltou' | 'cupom_vencendo' | 'pedido_parado' | 'aviso_adiantou' | 'aviso_avaliacao' | 'lembrete_manual'
+  | 'cancelamento_casa' | 'adiantar' | 'faltou' | 'cupom_vencendo' | 'pedido_parado' | 'aviso_adiantou' | 'aviso_avaliacao' | 'lembrete_manual' | 'retomar'
 
 async function enviarDeVerdade(telefone: string, texto: string): Promise<void> {
   const w = config.whatsapp

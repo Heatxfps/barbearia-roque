@@ -25,7 +25,7 @@ export function montar(db: DB, chave: string, vars: Record<string, string | numb
   const m = lerModelo(db, chave)
   if (!m.ativo && !mesmoDesligada) return null
   const b = lerBarbearia(db)
-  return preencher(m.texto, { barbearia: b.nome, endereco: b.endereco, cidade: (b.cidade ?? '').split(' - ')[0], link: config.urlApp, ...vars })
+  return preencher(m.texto, { barbearia: b.nome, endereco: b.endereco, cidade: (b.cidade ?? '').split(' - ')[0], link: `${config.urlApp}/?o=whatsapp`, ...vars }) // quem volta pela mensagem aparece no Funil como WhatsApp
 }
 
 export function listarModelos(db: DB) {

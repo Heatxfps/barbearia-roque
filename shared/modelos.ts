@@ -44,6 +44,7 @@ export const VARIAVEIS: Record<string, { rotulo: string; exemplo: string }> = {
   nova_hora: { rotulo: 'novo horário (adiantado)', exemplo: '14:20' },
   nota: { rotulo: 'nota da avaliação', exemplo: '2' },
   comentario: { rotulo: 'comentário do cliente', exemplo: 'Demorou para começar' },
+  escolha: { rotulo: 'o que o cliente tinha escolhido', exemplo: 'Corte com o Daniel, sexta-feira às 15:00' },
 }
 
 const AGENDA = ['nome', 'servico', 'barbeiro', 'data', 'hora', 'barbearia', 'endereco', 'link']
@@ -55,6 +56,12 @@ export const MODELOS: ModeloPadrao[] = [
     descricao: 'Dia lotado: o cliente entra na lista. Abriu vaga, avisa o primeiro; 30 min depois, o próximo.',
     texto: '{nome}, abriu vaga na *{barbearia}*! 🙌\n*{servico}* {data}: {horarios}\nVocê é o primeiro da lista de espera. Garanta pelo app nos próximos 30 min:\n{link}',
     variaveis: ['nome', 'servico', 'data', 'horarios', 'barbearia', 'link'],
+  },
+  {
+    chave: 'retomar', nome: 'Faltou terminar', grupo: 'marcou',
+    descricao: 'Começou a agendar pelo app e parou no meio. Vai uma vez só (no máximo uma por semana para o mesmo cliente), das 9h às 20h. O link reabre o agendamento onde parou.',
+    texto: '{nome}, faltou só confirmar: *{escolha}* na *{barbearia}* ✂️\nToque para terminar de onde parou:\n{link}',
+    variaveis: ['nome', 'escolha', 'servico', 'barbearia', 'link'], tempo: { padrao: 30, unidade: 'minutos', rotulo: 'depois que parou', min: 15, max: 240 },
   },
   {
     chave: 'confirmacao', nome: 'Confirmação', grupo: 'marcou',

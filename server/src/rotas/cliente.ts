@@ -10,6 +10,7 @@ import { aceitarAdiantar } from '../fila.ts'
 import { horariosLivres } from '../agenda.ts'
 import { enviarWhatsApp } from '../whatsapp.ts'
 import { montar } from '../mensagens.ts'
+import { fecharVisita } from '../funil.ts'
 
 /** "MM-DD" válido (aceita 29/02) */
 export const aniversarioValido = (s: string) => /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s) && !Number.isNaN(new Date(`2000-${s}T12:00`).getTime())
@@ -63,12 +64,15 @@ export async function rotasCliente(app: FastifyInstance, db: DB) {
     const b = z.object({
       servicoId: z.string(), profissionalId: z.string(),
       data: z.string().refine(dataValida, 'data inválida'), hora: z.string().refine(horaValida, 'hora inválida'),
+      visita: z.string().regex(/^[a-f0-9]{16}$/).optional(),
     }).parse(req.body)
     // no máximo 3 horários futuros por cliente (evita abuso)
     const { n } = db.prepare("SELECT COUNT(*) AS n FROM agendamentos WHERE cliente_id = ? AND status = 'confirmado' AND inicio > ?")
       .get(idCliente(req.user), carimbo(agora())) as { n: number }
     if (n >= 3) throw new ErroNegocio('Você já tem 3 horários marcados. Cancele um para marcar outro.')
-    const r = criarAgendamento(db, { ...b, clienteId: idCliente(req.user), origem: 'app' })
+    const { visita, ...dados } = b
+    const r = criarAgendamento(db, { ...dados, clienteId: idCliente(req.user), origem: 'app' })
+    fecharVisita(db, visita, idCliente(req.user), r.id)
     return reply.status(201).send(r)
   })
 
@@ -168,6 +172,7 @@ export async function rotasCliente(app: FastifyInstance, db: DB) {
       cupons: db.prepare('SELECT motivo, desconto_pct AS desconto, valido_ate AS validoAte FROM cupons WHERE cliente_id = ?').all(id),
       pedidos: db.prepare('SELECT status, total, criado_em AS criadoEm FROM pedidos WHERE cliente_id = ?').all(id),
       listaDeEspera: db.prepare('SELECT data FROM espera WHERE cliente_id = ?').all(id),
+      visitasAoApp: db.prepare('SELECT origem, etapa, criado_em AS criadoEm FROM visitas WHERE cliente_id = ? ORDER BY criado_em').all(id),
       mensagensWhatsApp: db.prepare('SELECT tipo, texto, criado_em AS criadoEm FROM mensagens WHERE telefone = ? ORDER BY criado_em').all(tel),
     }
   })
@@ -184,6 +189,7 @@ export async function rotasCliente(app: FastifyInstance, db: DB) {
       db.prepare('DELETE FROM mensagens WHERE telefone = ?').run(c.telefone)
       db.prepare('DELETE FROM codigos WHERE telefone = ?').run(c.telefone)
       db.prepare('DELETE FROM espera WHERE cliente_id = ?').run(id)
+      db.prepare('DELETE FROM visitas WHERE cliente_id = ?').run(id)
       db.prepare('DELETE FROM cupons WHERE cliente_id = ?').run(id)
       db.prepare("UPDATE avaliacoes SET comentario = '' WHERE cliente_id = ?").run(id)
       db.prepare("UPDATE pedidos SET status = 'cancelado', observacao = '' WHERE cliente_id = ? AND status IN ('novo','separado')").run(id)

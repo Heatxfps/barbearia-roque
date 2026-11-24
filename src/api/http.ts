@@ -52,6 +52,8 @@ export const apiHttp: Api = {
   atualizarPerfil: async (d) => { await chamar('PUT', '/me', d) },
 
   meusAgendamentos: () => chamar('GET', '/me/agendamentos'),
+  funil: async (d) => { try { await chamar('POST', '/funil', d) } catch { /* o funil nunca atrapalha o cliente */ } },
+  retomar: (id) => chamar('GET', `/retomar/${encodeURIComponent(id)}`),
   agendar: (d) => chamar('POST', '/me/agendamentos', d),
   cancelar: async (id, remarcar = false) => { await chamar('POST', `/me/agendamentos/${id}/cancelar`, { remarcar }) },
   convite: (id) => chamar('GET', `/adiantar/${encodeURIComponent(id)}`),
@@ -89,6 +91,7 @@ export const apiHttp: Api = {
     sair: () => gravar(CH_PAINEL, null),
     eu: () => p('GET', '/admin/eu'),
     resumo: (data) => p('GET', `/admin/resumo?${qs({ data })}`),
+    funil: (dias) => p('GET', `/admin/funil?dias=${dias}`),
     agenda: (data, profissional) => p('GET', `/admin/agenda?${qs({ data, profissional })}`),
     removerEspera: async (id) => { await p('DELETE', `/admin/espera/${id}`) },
     avaliacoes: () => p('GET', '/admin/avaliacoes'),

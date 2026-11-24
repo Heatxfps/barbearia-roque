@@ -11,12 +11,17 @@ import Loja from './screens/Loja'
 import Avaliar from './screens/Avaliar'
 import Adiantar from './screens/Adiantar'
 import { ProvedorApp, useApp } from './contexto'
+import { api } from './api'
+import { iniciarVisita } from './funil'
 
 export type Aba = 'inicio' | 'agenda' | 'fidelidade' | 'perfil'
-export type OpcoesAgendar = { servicoId?: string; profissionalId?: string }
+export type OpcoesAgendar = { servicoId?: string; profissionalId?: string; data?: string; hora?: string }
 export type Navegar = (destino: Aba | 'agendar' | 'noivo' | 'loja', opcoes?: OpcoesAgendar) => void
 
 type Modal = null | ({ tipo: 'agendar' } & OpcoesAgendar) | { tipo: 'noivo' } | { tipo: 'loja' } | { tipo: 'avaliar'; id: string } | { tipo: 'adiantar'; id: string }
+
+/** link "faltou terminar" do WhatsApp: /#retomar/ID */
+const retomarDoEndereco = () => /^#retomar\/([a-f0-9]{16})$/.exec(location.hash)?.[1]
 
 /** abre direto pelo endereço: /#avaliar/ID e /#adiantar/ID (links do WhatsApp). O painel da equipe fica em painel.html, fora do app. */
 function modalDoEndereco(): Modal {
@@ -30,7 +35,8 @@ const splashVisto = () => { try { return !!localStorage.getItem('roque-splash-vi
 
 function Conteudo() {
   const { barbearia, erroCarga, recarregar } = useApp()
-  const [splash, setSplash] = useState(() => !splashVisto() && !modalDoEndereco())
+  const { avisar } = useApp()
+  const [splash, setSplash] = useState(() => !splashVisto() && !modalDoEndereco() && !retomarDoEndereco())
   const [aba, setAba] = useState<Aba>('inicio')
   const [modal, setModal] = useState<Modal>(modalDoEndereco)
 
@@ -45,6 +51,25 @@ function Conteudo() {
     else { setModal(null); setAba(destino); if (location.hash) history.replaceState(null, '', location.pathname) }
     window.scrollTo(0, 0)
   }
+
+  // funil: começa a visita; pelo link "faltou terminar", reabre o agendamento onde a pessoa parou
+  useEffect(() => {
+    const retomar = () => {
+      const id = retomarDoEndereco()
+      if (!id) return false
+      iniciarVisita(id)
+      history.replaceState(null, '', location.pathname)
+      api.retomar(id).then((r) => {
+        if (r.jaAgendou) { avisar('Esse horário já foi marcado. Veja em Horários.'); setAba('agenda'); return }
+        if (!r.livre && r.servicoId) avisar('Aquele horário foi ocupado. Escolha outro, o resto já está pronto.')
+        setModal({ tipo: 'agendar', servicoId: r.servicoId ?? undefined, profissionalId: r.servicoId ? r.profissionalId ?? undefined : undefined, data: r.data ?? undefined, hora: r.hora ?? undefined })
+      }).catch(() => setModal({ tipo: 'agendar' }))
+      return true
+    }
+    if (!retomar()) iniciarVisita()
+    window.addEventListener('hashchange', retomar)
+    return () => window.removeEventListener('hashchange', retomar)
+  }, [avisar])
 
   useEffect(() => {
     const f = () => { const m = modalDoEndereco(); if (m) setModal(m) }
@@ -77,7 +102,7 @@ function Conteudo() {
           </div>
         )
       ) : modal?.tipo === 'agendar' ? (
-        <Agendar servicoInicial={modal.servicoId} profissionalInicial={modal.profissionalId} navegar={navegar} />
+        <Agendar key={`${modal.servicoId}-${modal.hora}`} servicoInicial={modal.servicoId} profissionalInicial={modal.profissionalId} dataInicial={modal.data} horaInicial={modal.hora} navegar={navegar} />
       ) : modal?.tipo === 'noivo' ? (
         <Noivo navegar={navegar} />
       ) : modal?.tipo === 'loja' ? (

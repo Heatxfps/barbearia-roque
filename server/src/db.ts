@@ -188,6 +188,22 @@ CREATE TABLE IF NOT EXISTS automacao_envios (
   PRIMARY KEY (automacao_id, ref)
 );
 
+-- funil: cada visita ao app, de onde veio e até onde chegou (ver funil.ts)
+CREATE TABLE IF NOT EXISTS visitas (
+  id TEXT PRIMARY KEY,               -- gerado no aparelho (aleatório)
+  origem TEXT NOT NULL DEFAULT 'direto',
+  etapa INTEGER NOT NULL DEFAULT 0,  -- 0 abriu · 1 serviço · 2 barbeiro · 3 horário · 4 confirmar
+  cliente_id TEXT,                   -- preenchido quando a pessoa está identificada
+  servico_id TEXT, profissional_id TEXT, data TEXT, hora TEXT,
+  agendamento_id TEXT,               -- agendou nesta visita
+  encerrada TEXT,                    -- agendou por outra visita/balcão (não conta como "parou")
+  recuperacao_em TEXT,               -- quando a mensagem de retomada saiu ('pulada' = já recebeu uma na semana)
+  criado_em TEXT NOT NULL,
+  atualizado_em TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS visitas_criado ON visitas(criado_em);
+CREATE INDEX IF NOT EXISTS visitas_cliente ON visitas(cliente_id, criado_em);
+
 CREATE TABLE IF NOT EXISTS usuarios (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,

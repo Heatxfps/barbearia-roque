@@ -20,6 +20,7 @@ import { agora, carimbo, dataIso, dataValida, horaValida, lerCarimbo, normalizar
 import { ErroNegocio, criarAgendamento, lembrarAgora, marcarStatus } from '../servicos-agendamento.ts'
 import { aniversariantes, lembretes, retornoComEstado } from '../status-mensagens.ts'
 import { clientesParaRetorno } from '../jobs.ts'
+import { resumoFunil } from '../funil.ts'
 
 type Admin = Extract<Sessao, { tipo: 'admin' }>
 const sessao = (req: FastifyRequest) => req.user as Admin
@@ -118,6 +119,12 @@ export async function rotasAdmin(app: FastifyInstance, db: DB) {
 
     /** Aniversariantes (3 dias atrás até 7 dias para a frente), com a situação do parabéns e do cupom */
     r.get('/aniversariantes', async () => aniversariantes(db))
+
+    /** Funil (5 A's): de onde vêm e até onde vão. A equipe toda vê (não é financeiro). */
+    r.get('/funil', async (req) => {
+      const { dias } = z.object({ dias: z.coerce.number().int().refine((n) => [1, 7, 30].includes(n)).default(7) }).parse(req.query)
+      return resumoFunil(db, dias)
+    })
 
     r.get('/resumo', { onRequest: exigirDono }, async (req) => {
       const { data } = z.object({ data: z.string().refine(dataValida).optional() }).parse(req.query)

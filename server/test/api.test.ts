@@ -499,3 +499,60 @@ test('privacidade: login não revela quem é cliente; cliente baixa e apaga os p
   assert.equal((db.prepare('SELECT status FROM agendamentos WHERE id = ?').get(a.json.id) as { status: string }).status, 'cancelado')
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM mensagens WHERE telefone = '5527996663001'").get() as { n: number }).n, 0)
 })
+
+test('funil: origem, etapas, retomada de quem parou no meio e números no painel', async () => {
+  relogio = new Date(2030, 2, 11, 10, 0) // segunda, 10h
+  const DIA = '2030-03-12'
+  const passo = (corpo: object, token?: string) => req('POST', '/api/funil', corpo, token)
+  // visitante anônimo do Instagram só olhou
+  assert.equal((await passo({ visita: 'a000000000000001', origem: 'instagram', etapa: 0 })).status, 200)
+  assert.equal((await passo({ visita: 'a000000000000001', etapa: 1, servicoId: 'corte' })).status, 200)
+  // cliente logado veio do QR, escolheu tudo e parou antes de confirmar
+  const t = await loginCliente('27996661010', 'Pedro Funil')
+  await passo({ visita: 'b000000000000002', origem: 'qr', etapa: 0 }, t)
+  await passo({ visita: 'b000000000000002', etapa: 1, servicoId: 'corte' }, t)
+  await passo({ visita: 'b000000000000002', etapa: 2, profissionalId: 'p1' }, t)
+  await passo({ visita: 'b000000000000002', etapa: 3, data: DIA, hora: '16:00' }, t)
+  // etapa nunca volta
+  await passo({ visita: 'b000000000000002', etapa: 1 }, t)
+  assert.equal((db.prepare("SELECT etapa FROM visitas WHERE id = 'b000000000000002'").get() as { etapa: number }).etapa, 3)
+  assert.equal((await passo({ visita: 'xyz', etapa: 0 })).status, 400)
+
+  // antes de 30 min: nada
+  await rodarTarefas(db)
+  assert.equal((await msgsDo('retomar')).filter((m) => m.telefone === '5527996661010').length, 0)
+  // 31 min depois: uma mensagem com o link
+  relogio = new Date(2030, 2, 11, 10, 31)
+  await rodarTarefas(db)
+  await rodarTarefas(db)
+  const ret = (await msgsDo('retomar')).filter((m) => m.telefone === '5527996661010')
+  assert.equal(ret.length, 1)
+  assert.match(ret[0].texto, /Corte com o Daniel/)
+  assert.match(ret[0].texto, /#retomar\/b000000000000002/)
+
+  // o link reabre com o que foi escolhido (sem dados pessoais)
+  const info = await req('GET', '/api/retomar/b000000000000002')
+  assert.deepEqual(info.json, { servicoId: 'corte', profissionalId: 'p1', data: DIA, hora: '16:00', livre: true, jaAgendou: false })
+
+  const dono = await loginDono()
+  let f = (await req('GET', '/api/admin/funil?dias=1', undefined, dono)).json
+  assert.equal(f.etapas.chegou, 2)
+  assert.equal(f.etapas.atracao, 2)
+  assert.equal(f.etapas.arguicao, 1)
+  assert.equal(f.etapas.acao, 0)
+  assert.equal(f.parados.find((p: { id: string }) => p.id === 'b000000000000002').estado, 'enviada')
+  assert.equal(f.retomada.anonimos, 1)
+
+  // agenda pelo link da mensagem: conta como recuperado
+  relogio = new Date(2030, 2, 11, 11, 0)
+  assert.equal((await req('POST', '/api/me/agendamentos', { servicoId: 'corte', profissionalId: 'p1', data: DIA, hora: '16:00', visita: 'b000000000000002' }, t)).status, 201)
+  f = (await req('GET', '/api/admin/funil?dias=1', undefined, dono)).json
+  assert.equal(f.etapas.acao, 1)
+  assert.equal(f.parados.find((p: { id: string }) => p.id === 'b000000000000002').estado, 'recuperado')
+  assert.equal(f.retomada.recuperados, 1)
+  assert.deepEqual(f.origens.find((o: { origem: string }) => o.origem === 'qr'), { origem: 'qr', visitas: 1, agendaram: 1 })
+  assert.equal((await req('GET', '/api/retomar/b000000000000002')).json.jaAgendou, true)
+
+  // barbeiro também vê o funil
+  assert.equal((await req('GET', '/api/admin/funil?dias=7')).status, 401)
+})

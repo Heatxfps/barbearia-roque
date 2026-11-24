@@ -107,6 +107,21 @@ export type Automacao = { id: string; nome: string; gatilho: Gatilho; valor: num
 export type NovoProfissional = { nome: string; especialidade: string; ativo: boolean; foto?: string | null; expediente?: Expediente[] }
 export type ClientePainel = { id: string; nome: string; telefone: string; visitas: number; faltas: number; ultimaVisita: string | null }
 
+/** Funil (5 A's): um passo da visita ao app. etapa 0 abriu · 1 serviço · 2 barbeiro · 3 horário · 4 confirmar */
+export type PassoFunil = { visita: string; origem?: string; etapa: number; servicoId?: string; profissionalId?: string; data?: string; hora?: string }
+export type Retomada = { servicoId: string | null; profissionalId: string | null; data: string | null; hora: string | null; livre: boolean; jaAgendou: boolean }
+export type EstadoParado = 'aguardando' | 'enviada' | 'recuperado' | 'nao_voltou' | 'voltou_sozinho'
+export type Funil = {
+  dias: number; agora: string
+  etapas: { chegou: number; atracao: number; arguicao: number; acao: number; apologia: number; atendidos: number }
+  origens: { origem: string; visitas: number; agendaram: number }[]
+  saidas: { etapa: string; n: number }[]
+  aoVivo: { id: string; origem: string; etapa: number; quando: string; nome: string | null; servico: string | null }[]
+  parados: { id: string; nome: string; telefone: string; origem: string; parouEm: string; servico: string | null; profissional: string | null
+    data: string | null; hora: string | null; quando: string; estado: EstadoParado; enviadaEm: string | null; mensagemEm: string | null }[]
+  retomada: { enviadas: number; recuperados: number; anonimos: number; esperaMin: number }
+}
+
 export interface Api {
   modo: 'servidor' | 'local'
   barbearia(): Promise<Barbearia>
@@ -123,7 +138,9 @@ export interface Api {
   atualizarPerfil(d: { nome?: string; aniversario?: string | null }): Promise<void>
 
   meusAgendamentos(): Promise<{ agora: string; agendamentos: Agendamento[] }>
-  agendar(d: { servicoId: string; profissionalId: string; data: string; hora: string }): Promise<{ id: string; profissionalId: string; inicio: string }>
+  funil(p: PassoFunil): Promise<void>
+  retomar(id: string): Promise<Retomada>
+  agendar(d: { servicoId: string; profissionalId: string; data: string; hora: string; visita?: string }): Promise<{ id: string; profissionalId: string; inicio: string }>
   cancelar(id: string, remarcar?: boolean): Promise<void>
   convite(id: string): Promise<ConviteAdiantar>
   adiantar(id: string): Promise<{ inicio: string }>
@@ -150,6 +167,7 @@ export interface Api {
     sair(): void
     eu(): Promise<UsuarioPainel>
     resumo(data: string): Promise<Resumo>
+    funil(dias: number): Promise<Funil>
     agenda(data: string, profissional?: string): Promise<{ agendamentos: ItemAgenda[]; bloqueios: Bloqueio[]; espera?: EsperaPainel[] }>
     removerEspera(id: string): Promise<void>
     avaliacoes(): Promise<ResumoAvaliacoes>

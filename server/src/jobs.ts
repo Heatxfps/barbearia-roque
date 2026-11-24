@@ -8,6 +8,7 @@
  *  - lista de espera: abriu vaga num dia lotado → avisa o primeiro da fila; 30 min depois, o próximo
  *  - fila do dia: convite "pode adiantar" que venceu passa para o próximo cliente (fila.ts)
  *  - cupom de aniversário perto de vencer, pedido da loja separado e não retirado
+ *  - retomada: começou a agendar e parou no meio → uma mensagem com o link para terminar (funil.ts)
  */
 import type { DB } from './db.ts'
 import { lerBarbearia, novoId } from './db.ts'
@@ -20,6 +21,7 @@ import { montar, tempoDe, varsAgendamento } from './mensagens.ts'
 import { preencher } from '../../shared/modelos.ts'
 import { dataExtenso } from './tempo.ts'
 import { vencerConvites } from './fila.ts'
+import { limparVisitas, retomarParados } from './funil.ts'
 
 type Linha = { id: string; inicio: string; criado_em: string }
 
@@ -73,6 +75,7 @@ export async function rodarTarefas(db: DB) {
   vencerConvites(db)
   await cupomVencendo(db)
   await pedidoParado(db)
+  await retomarParados(db)
 
   await convidarAvaliacao(db)
   await parabenizar(db)
@@ -198,6 +201,7 @@ async function rodarAutomacoes(db: DB) {
 export function limparDados(db: DB) {
   db.prepare('DELETE FROM codigos WHERE expira_em < ?').run(Date.now() - 60_000)
   db.prepare('DELETE FROM mensagens WHERE criado_em < ?').run(carimbo(somarMin(agora(), -180 * 1440)))
+  limparVisitas(db)
 }
 
 /** Cupom de aniversário perto de vencer: quem não usou e não tem horário marcado (uma vez por cupom). */

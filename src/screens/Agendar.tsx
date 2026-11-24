@@ -6,28 +6,38 @@ import { api, type Dia } from '../api'
 import { useApp } from '../contexto'
 import { dataLonga, foto, lerData, moeda } from '../util'
 import { iniciais } from './Inicio'
+import { encerrarVisita, passo, visitaAtual } from '../funil'
 
 const B = import.meta.env.BASE_URL
 
 const ETAPAS = ['Serviço', 'Barbeiro', 'Horário', 'Confirmar'] as const
 
-type Props = { servicoInicial?: string; profissionalInicial?: string; navegar: Navegar }
+type Props = { servicoInicial?: string; profissionalInicial?: string; dataInicial?: string; horaInicial?: string; navegar: Navegar }
 
-export default function Agendar({ servicoInicial, profissionalInicial, navegar }: Props) {
+export default function Agendar({ servicoInicial, profissionalInicial, dataInicial, horaInicial, navegar }: Props) {
   const { barbearia, cliente, avisar } = useApp()
-  const [etapa, setEtapa] = useState(servicoInicial ? (profissionalInicial ? 2 : 1) : 0)
+  const [etapa, setEtapa] = useState(servicoInicial ? (profissionalInicial ? (horaInicial ? 3 : 2) : 1) : 0)
   const [servicoId, setServicoId] = useState(servicoInicial ?? '')
   const [profId, setProfId] = useState(profissionalInicial ?? '')
   const [dias, setDias] = useState<Dia[] | null>(null)
-  const [data, setData] = useState('')
+  const [data, setData] = useState(dataInicial ?? '')
   const [horas, setHoras] = useState<string[] | null>(null)
-  const [hora, setHora] = useState('')
+  const [hora, setHora] = useState(horaInicial ?? '')
   const [enviando, setEnviando] = useState(false)
   const [feito, setFeito] = useState<{ profissional: string } | null>(null)
 
   const servico = barbearia?.servicos.find((s) => s.id === servicoId)
   const profs = [{ id: 'qualquer', nome: 'Sem preferência', especialidade: 'Primeiro barbeiro livre', foto: null }, ...(barbearia?.profissionais ?? [])]
   const prof = profs.find((p) => p.id === profId)
+
+  // funil: avisa até onde a pessoa chegou (sem dados pessoais; se estiver logada, liga ao cadastro para a retomada)
+  useEffect(() => {
+    if (etapa === 1) passo(1, { servicoId })
+    else if (etapa === 2) passo(2, { servicoId, profissionalId: profId })
+    else if (etapa === 3) passo(cliente ? 4 : 3, { servicoId, profissionalId: profId, data, hora })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [etapa, cliente?.id])
+  useEffect(() => { if (etapa === 2 && hora) passo(3, { servicoId, profissionalId: profId, data, hora }) }, [hora]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // dias com vaga
   useEffect(() => {
@@ -51,7 +61,8 @@ export default function Agendar({ servicoInicial, profissionalInicial, navegar }
   const confirmar = async () => {
     setEnviando(true)
     try {
-      const r = await api.agendar({ servicoId, profissionalId: profId, data, hora })
+      const r = await api.agendar({ servicoId, profissionalId: profId, data, hora, visita: visitaAtual() })
+      encerrarVisita()
       setFeito({ profissional: barbearia?.profissionais.find((p) => p.id === r.profissionalId)?.nome ?? '' })
     } catch (e) {
       avisar((e as Error).message, 'erro')

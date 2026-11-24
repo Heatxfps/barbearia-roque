@@ -4,6 +4,7 @@
  * As regras são as mesmas do servidor (duração, intervalo, conflitos), em versão simplificada.
  */
 import { MODELOS, preencher } from '../../shared/modelos'
+import type { Funil, EstadoParado } from './tipos'
 import type { Agendamento, Api, Automacao, EstadoMsg, ItemLembrete, ModeloMsg, Oferta, Barbearia, Bloqueio, Cliente, DadosBarbearia, ItemAgenda, Mensagem, Pedido, Produto, Servico, Status, UsuarioLista } from './tipos'
 
 const p2 = (n: number) => String(n).padStart(2, '0')
@@ -46,6 +47,7 @@ type Banco = {
   avaliacoes?: { agendamentoId: string; nota: number; comentario: string; criadoEm: string }[]
   modelos?: Record<string, { texto?: string | null; ativo?: boolean; valor?: number | null }>
   automacoes?: Automacao[]
+  visitas?: Visita[]
   agendamentos: Ag[]
   bloqueios: Omit<Bloqueio, 'profissional'>[]
   mensagens: Mensagem[]
@@ -55,6 +57,9 @@ type Banco = {
   sessao?: string
   painel?: boolean
 }
+
+type Visita = { id: string; origem: string; etapa: number; clienteId?: string; servicoId?: string; profissionalId?: string; data?: string; hora?: string
+  agendamentoId?: string; encerrada?: string; recuperacaoEm?: string; criadoEm: string; atualizadoEm: string; apologia?: boolean }
 
 const CHAVE = 'roque-offline-v4'
 let banco: Banco = carregar()
@@ -202,6 +207,107 @@ function eu(): Cliente | null {
   return { ...c, fidelidade: { selos: n % META, meta: META, premiosConquistados: Math.floor(n / META), totalAtendimentos: n }, cupom: cupomDe(c) }
 }
 
+/* ---------------- funil (demonstração) ---------------- */
+const NOMES_ETAPA = ['abriu o app', 'serviço', 'barbeiro', 'horário', 'confirmar']
+
+/** 30 dias de visitas fictícias para o funil ter números na demonstração */
+function semearVisitas(): Visita[] {
+  let s = 11
+  const rnd = () => ((s = (s * 1103515245 + 12345) % 2 ** 31) / 2 ** 31)
+  const origens: [string, number][] = [['instagram', 0.4], ['qr', 0.6], ['whatsapp', 0.78], ['google', 0.87], ['indicacao', 0.95], ['direto', 1]]
+  const out: Visita[] = []
+  const agoraD = new Date()
+  for (let d = 29; d >= 0; d--) {
+    const dia = new Date(); dia.setHours(0, 0, 0, 0); dia.setDate(dia.getDate() - d)
+    if (!EXPEDIENTE[dia.getDay()]) continue
+    const n = 14 + Math.floor(rnd() * 12)
+    for (let i = 0; i < n; i++) {
+      const t = new Date(dia.getTime() + (8 * 60 + Math.floor(rnd() * 12 * 60)) * 60000)
+      if (t > new Date(agoraD.getTime() - 15 * 60000)) continue
+      const r = rnd(), o = origens.find(([, lim]) => r < lim)![0]
+      const forca = o === 'indicacao' ? 0.2 : o === 'qr' ? 0.12 : o === 'whatsapp' ? 0.1 : 0
+      const sv = SERVICOS[Math.floor(rnd() * 3)].id, pf = PROFS[Math.floor(rnd() * 2)].id
+      const etapa = rnd() < 0.64 + forca ? (rnd() < 0.72 + forca ? (rnd() < 0.8 ? 4 : 3) : 2) : (rnd() < 0.15 ? 1 : 0)
+      const agendou = etapa === 4 && rnd() < 0.78 + forca
+      const ident = agendou || (etapa >= 3 && rnd() < 0.7)
+      const fim = new Date(t.getTime() + (2 + Math.floor(rnd() * 5)) * 60000)
+      const v: Visita = {
+        id: id() + id(), origem: o, etapa, criadoEm: carimbo(t), atualizadoEm: carimbo(fim),
+        ...(etapa >= 1 ? { servicoId: sv } : {}), ...(etapa >= 2 ? { profissionalId: pf } : {}),
+        ...(etapa >= 3 ? { data: dataIso(new Date(t.getTime() + 864e5)), hora: `${p2(9 + Math.floor(rnd() * 9))}:${rnd() < 0.5 ? '00' : '30'}` } : {}),
+        ...(ident ? { clienteId: 'c' + Math.floor(rnd() * 16) } : {}),
+      }
+      if (agendou) { v.agendamentoId = 'demo'; v.apologia = d > 2 && rnd() < 0.55 }
+      else if (ident && etapa >= 1 && (agoraD.getTime() - fim.getTime()) / 60000 > 30) {
+        v.recuperacaoEm = carimbo(new Date(fim.getTime() + 30 * 60000))
+        if (rnd() < 0.42) v.encerrada = 'demo'
+      }
+      out.push(v)
+    }
+  }
+  return out
+}
+const visitas = () => (banco.visitas ??= semearVisitas())
+
+function funilLocal(dias: number): Funil {
+  const agoraD = new Date(), agoraTxt = carimbo(agoraD)
+  const ini = new Date(); ini.setHours(0, 0, 0, 0); ini.setDate(ini.getDate() - (dias - 1))
+  const desde = carimbo(ini), dez = carimbo(new Date(agoraD.getTime() - 10 * 60000)), umDia = carimbo(new Date(agoraD.getTime() - 864e5))
+  const vs = visitas().filter((v) => v.criadoEm >= desde)
+  const apol = (v: Visita) => !!v.apologia || (!!v.agendamentoId && v.agendamentoId !== 'demo' && banco.agendamentos.some((a) => a.id === v.agendamentoId && a.status === 'concluido')
+    && !!banco.avaliacoes?.some((x) => x.agendamentoId === v.agendamentoId && x.nota >= 4))
+  const porOrigem: Record<string, { visitas: number; agendaram: number }> = {}
+  vs.forEach((v) => { const o = (porOrigem[v.origem] ??= { visitas: 0, agendaram: 0 }); o.visitas++; if (v.agendamentoId) o.agendaram++ })
+  const saidas: Record<number, number> = {}
+  vs.filter((v) => !v.agendamentoId && !v.encerrada && v.atualizadoEm <= dez).forEach((v) => { saidas[v.etapa] = (saidas[v.etapa] ?? 0) + 1 })
+  // ao vivo: 2 visitantes fictícios andando pelo app agora + quem estiver usando este aparelho
+  const m = (n: number) => carimbo(new Date(agoraD.getTime() - n * 60000))
+  const ficticios = [
+    { id: 'vivo1', origem: 'instagram', etapa: 2, quando: m(1), nome: null, servico: 'Corte + Barba' },
+    { id: 'vivo2', origem: 'qr', etapa: 3, quando: m(3), nome: 'Thiago Lima', servico: 'Corte' },
+  ]
+  const aoVivo = [...visitas().filter((v) => v.atualizadoEm > dez && !v.agendamentoId).map((v) => ({
+    id: v.id, origem: v.origem, etapa: v.etapa, quando: v.atualizadoEm,
+    nome: v.clienteId ? cliente(v.clienteId)?.nome ?? null : null, servico: v.servicoId ? servico(v.servicoId)?.nome ?? null : null,
+  })), ...ficticios].sort((a, b) => b.quando.localeCompare(a.quando))
+  const espera = tempoModelo('retomar') || 30
+  const parados = visitas().filter((v) => v.clienteId && cliente(v.clienteId) && v.etapa >= 1 && v.criadoEm >= carimbo(new Date(agoraD.getTime() - 7 * 864e5))
+    && (v.recuperacaoEm || (!v.agendamentoId && !v.encerrada && v.atualizadoEm <= dez)))
+    .sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm)).slice(0, 50)
+    .map((v) => {
+      const enviada = !!v.recuperacaoEm, voltou = !!(v.agendamentoId || v.encerrada)
+      const estado: EstadoParado = voltou ? (enviada ? 'recuperado' : 'voltou_sozinho') : enviada ? (v.recuperacaoEm! < umDia ? 'nao_voltou' : 'enviada') : v.atualizadoEm < umDia ? 'nao_voltou' : 'aguardando'
+      const c = cliente(v.clienteId!)!
+      return {
+        id: v.id, nome: c.nome, telefone: c.telefone, origem: v.origem, parouEm: NOMES_ETAPA[v.etapa], servico: v.servicoId ? servico(v.servicoId).nome : null,
+        profissional: v.profissionalId ? nomeProf(v.profissionalId) || 'Sem preferência' : null, data: v.data ?? null, hora: v.hora ?? null, quando: v.atualizadoEm, estado,
+        enviadaEm: v.recuperacaoEm ?? null, mensagemEm: estado === 'aguardando' ? carimbo(new Date(ler(v.atualizadoEm).getTime() + espera * 60000)) : null,
+      }
+    })
+  // sempre um "aguardando" recente na demonstração, para mostrar a retomada programada
+  if (!parados.some((p) => p.estado === 'aguardando')) {
+    parados.unshift({
+      id: 'demo-aguardando', nome: 'Felipe Rocha', telefone: '5527988002742', origem: 'instagram', parouEm: 'horário', servico: 'Corte', profissional: 'Daniel Andrade',
+      data: dataIso(new Date(agoraD.getTime() + 864e5)), hora: '15:00', quando: m(14), estado: 'aguardando', enviadaEm: null, mensagemEm: carimbo(new Date(agoraD.getTime() + (espera - 14) * 60000)),
+    })
+  }
+  const env = vs.filter((v) => v.recuperacaoEm)
+  return {
+    dias, agora: agoraTxt,
+    etapas: {
+      chegou: vs.length, atracao: vs.filter((v) => v.etapa >= 1 || v.agendamentoId).length, arguicao: vs.filter((v) => v.etapa >= 3 || v.agendamentoId).length,
+      acao: vs.filter((v) => v.agendamentoId).length, apologia: vs.filter(apol).length, atendidos: vs.filter((v) => v.agendamentoId).length,
+    },
+    origens: Object.entries(porOrigem).map(([origem, o]) => ({ origem, ...o })).sort((a, b) => b.visitas - a.visitas),
+    saidas: Object.entries(saidas).map(([e, n]) => ({ etapa: NOMES_ETAPA[+e], n })),
+    aoVivo, parados,
+    retomada: {
+      enviadas: env.length, recuperados: env.filter((v) => v.agendamentoId || v.encerrada).length,
+      anonimos: vs.filter((v) => !v.clienteId && !v.agendamentoId && v.etapa >= 1 && v.atualizadoEm <= dez).length, esperaMin: espera,
+    },
+  }
+}
+
 export const apiLocal: Api = {
   modo: 'local',
   async barbearia(): Promise<Barbearia> {
@@ -282,6 +388,26 @@ export const apiLocal: Api = {
         .map((a) => ({ ...paraAgendamento(a), avaliacao: banco.avaliacoes?.find((v) => v.agendamentoId === a.id)?.nota ?? null, adiantarPara: (a.adiantarAte ?? '') > carimbo(new Date()) ? a.adiantarPara : null })),
     }
   },
+  async funil(p) {
+    const agoraTxt = carimbo(new Date())
+    const v = visitas().find((x) => x.id === p.visita)
+    if (!v) {
+      visitas().push({ id: p.visita, origem: (p.origem ?? 'direto').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24) || 'direto', etapa: p.etapa,
+        servicoId: p.servicoId, profissionalId: p.profissionalId, data: p.data, hora: p.hora, clienteId: banco.sessao, criadoEm: agoraTxt, atualizadoEm: agoraTxt })
+    } else if (!v.agendamentoId) {
+      Object.assign(v, { etapa: Math.max(v.etapa, p.etapa), atualizadoEm: agoraTxt, clienteId: banco.sessao ?? v.clienteId,
+        ...(p.servicoId ? { servicoId: p.servicoId } : {}), ...(p.profissionalId ? { profissionalId: p.profissionalId } : {}), ...(p.data ? { data: p.data } : {}), ...(p.hora ? { hora: p.hora } : {}) })
+    }
+    salvar()
+  },
+  async retomar(vid) {
+    await espera()
+    const v = visitas().find((x) => x.id === vid)
+    if (!v) throw new Error('Link não encontrado')
+    const sv = v.servicoId ? servico(v.servicoId) : undefined
+    const livre = !!(sv && v.profissionalId && v.data && v.hora && livres(v.profissionalId, v.data, sv.duracao).includes(v.hora))
+    return { servicoId: v.servicoId ?? null, profissionalId: v.profissionalId ?? null, data: livre ? v.data! : null, hora: livre ? v.hora! : null, livre, jaAgendou: !!(v.agendamentoId || v.encerrada) }
+  },
   async agendar(d) {
     await espera()
     const sv = servico(d.servicoId)
@@ -295,6 +421,8 @@ export const apiLocal: Api = {
     if (cupom) c.cupomAno = new Date().getFullYear()
     const a: Ag = { id: id(), clienteId: c.id, profissionalId: prof, servicoId: sv.id, inicio, fim: carimbo(new Date(ler(inicio).getTime() + sv.duracao * 60000)), preco: sv.preco - desconto, desconto, status: 'confirmado', origem: 'app' }
     banco.agendamentos.push(a)
+    const vis = d.visita ? visitas().find((x) => x.id === d.visita) : undefined
+    if (vis) Object.assign(vis, { agendamentoId: a.id, clienteId: c.id, etapa: 4 })
     banco.espera = (banco.espera ?? []).filter((e) => !(e.clienteId === c.id && e.data === d.data))
     msg(c.telefone, 'confirmacao', `Fala, ${c.nome.split(' ')[0]}! ✂️ Seu horário de *${sv.nome}* está confirmado para ${inicio.slice(8, 10)}/${inicio.slice(5, 7)} às ${d.hora}.`)
     msg(dados().whatsapp, 'aviso_novo', `📲 *Novo horário pelo app*
@@ -415,6 +543,7 @@ ${c.nome} · ${sv.nome}
     async salvarSeguranca() { throw new Error(OFFLINE) },
     sair() { banco.painel = false; salvar() },
     async eu() { return { nome: 'Luciano Roque', email: 'dono@roque.local', papel: 'dono', profissionalId: null } },
+    async funil(dias) { await espera(); const r = funilLocal(dias); salvar(); return r },
     async resumo(data) {
       await espera()
       const doDia = banco.agendamentos.filter((a) => a.inicio.startsWith(data) && (a.status === 'confirmado' || a.status === 'concluido'))

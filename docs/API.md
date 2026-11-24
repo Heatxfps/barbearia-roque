@@ -25,6 +25,8 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 | GET | `/produtos` | Produtos à venda na loja |
 | GET | `/avaliacao/:id` | Dados do atendimento para a página de avaliação (o id vai no link do WhatsApp) |
 | POST | `/avaliacao/:id` `{ nota 1-5, comentario? }` | Registra a avaliação (uma por atendimento) |
+| POST | `/funil` `{ visita, origem?, etapa 0-4, servicoId?, profissionalId?, data?, hora? }` | Passo da visita ao app (funil). Sem dados pessoais; com token de cliente, liga a visita ao cadastro |
+| GET | `/retomar/:id` | O que a pessoa tinha escolhido na visita e se o horário ainda está livre (link "faltou terminar") |
 
 ## Cliente (token de cliente)
 
@@ -32,7 +34,7 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 |---|---|---|
 | GET | `/me` | Dados e cartão fidelidade `{ selos, meta, premiosConquistados }` |
 | GET | `/me/agendamentos` | Histórico e próximos horários |
-| POST | `/me/agendamentos` `{ servicoId, profissionalId, data, hora }` | Agenda (409 se o horário foi ocupado). No máximo 3 futuros |
+| POST | `/me/agendamentos` `{ servicoId, profissionalId, data, hora, visita? }` | Agenda (409 se o horário foi ocupado). No máximo 3 futuros. `visita` fecha a visita do funil |
 | POST | `/me/agendamentos/:id/cancelar` | Cancela, respeitando a antecedência mínima |
 
 ### Cliente (v1.2)
@@ -54,6 +56,7 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 | POST | `/admin/login/codigo` `{ desafio, codigo }` | dono | Confirma o código do WhatsApp e devolve `{ token, usuario }` |
 | GET | `/admin/eu` | todos | Usuário logado |
 | GET | `/admin/resumo?data=` | dono | Resultados financeiros do dia e do mês, ranking |
+| GET | `/admin/funil?dias=1\|7\|30` | todos | Funil dos 5 A's: etapas, origens, quem está no app agora e quem parou no meio (com o estado da retomada) |
 | GET | `/admin/retorno` | todos | Clientes para chamar de volta, com `estado` da mensagem "volte a cortar" |
 | GET | `/admin/aniversariantes` | todos | Aniversários de 3 dias atrás até 7 dias para a frente, com `estado` do parabéns e situação do `cupom` |
 | GET | `/admin/lembretes` | todos | Horários dos próximos 7 dias com o `estado` de cada lembrete (`enviada`, `falhou`, `programada`, `nao_vai`, `desligada`, `sem_whatsapp`) |
@@ -94,6 +97,7 @@ Autenticação: `Authorization: Bearer <token>`. Existem dois tipos de token: **
 - **Aviso de cancelamento**: comprovante quando o cliente cancela (não vai se ele está remarcando); texto de desculpas quando a barbearia desmarca
 - **Pode adiantar** (fila do dia): cancelamento no dia, falta ou atendimento concluído antes do previsto liberam a agenda → o próximo cliente daquele barbeiro (com horário nas próximas 4 h) recebe o convite com o link `/#adiantar/ID`. Um convite por vez por barbeiro, vale 20 min; sem resposta, passa para o seguinte; quem aceita libera o horário antigo e o próximo é convidado. Rotas abertas: `GET/POST /api/adiantar/:id`
 - **Sentimos sua falta**: quando o barbeiro marca "faltou"
+- **Faltou terminar** (retomada do funil): cliente identificado começou a agendar e parou → X min depois (padrão 30), das 9h às 20h, uma mensagem com o link `/#retomar/ID` que reabre o agendamento onde parou. Uma vez por visita e no máximo uma por semana por número; se marcou de outro jeito, não vai
 - **Cupom vencendo**: X dias antes de o cupom de aniversário vencer, se não foi usado e não há horário marcado
 - **Lembrete de retirada**: pedido separado e não retirado depois de X dias
 - **Avaliação baixa**: nota de 3 estrelas ou menos avisa o WhatsApp da barbearia na hora

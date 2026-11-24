@@ -1024,3 +1024,41 @@ body { font-variant-numeric: lining-nums; }
   .abas, .hero__status, .noivo-hero__voltar, .confirmar { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
   .abas { background: var(--fundo) !important; }
 }
+
+/* =========================================================
+   FUNIL DE CLIENTES (painel): os 5 A's, ao vivo e retomada
+   ========================================================= */
+.funil-vivo { gap: 10px; }
+.funil-vivo__titulo { margin: 0; display: flex; align-items: center; gap: 10px; }
+.funil-pulso { width: 10px; height: 10px; border-radius: 50%; background: var(--verde); box-shadow: 0 0 0 0 rgba(95,191,127,.6); animation: funil-pulso 1.8s ease-out infinite; }
+@keyframes funil-pulso { to { box-shadow: 0 0 0 10px rgba(95,191,127,0); } }
+@media (prefers-reduced-motion: reduce) { .funil-pulso { animation: none; box-shadow: 0 0 0 4px rgba(95,191,127,.2); } }
+.funil-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.funil-lista li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding-bottom: 8px; border-bottom: 1px solid var(--linha); }
+.funil-lista__det { grid-column: 1 / -1; grid-row: 2; }
+.funil-lista li:last-child { border-bottom: 0; padding-bottom: 0; }
+.funil-lista__quando { grid-column: 2; grid-row: 1; }
+
+.funil { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.funil__etapa { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.funil__barra {
+  width: var(--larg); min-width: 220px; max-width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--r-m);
+  background: linear-gradient(90deg, rgba(200,147,90,.28), rgba(226,178,122,.14)); border: 1px solid var(--filete); transition: width .6s cubic-bezier(.2,.8,.2,1);
+}
+.funil__etapa:nth-child(4) .funil__barra, .funil__etapa:nth-child(5) .funil__barra { background: linear-gradient(90deg, rgba(200,147,90,.55), rgba(226,178,122,.3)); }
+.funil__num { font-family: var(--fonte-ed); font-size: 28px; font-weight: 600; line-height: 1; color: var(--cobre-claro); min-width: 2.2ch; }
+.funil__nome { display: flex; flex-direction: column; font-weight: 600; font-size: 14px; }
+.funil__nome small { font-weight: 400; font-size: 11px; color: var(--suave); letter-spacing: .08em; text-transform: uppercase; }
+.funil__txt { text-align: center; }
+.funil-dica p { line-height: 1.5; }
+
+.funil-origem { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.funil-parados { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.funil-parado { display: flex; flex-direction: column; gap: 3px; background: var(--superficie); border: 1px solid var(--linha); border-radius: var(--r-m); padding: 12px 14px; }
+.funil-parado .linha-entre { gap: 10px; }
+.funil-estado { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: var(--r-pilula); white-space: nowrap; }
+.funil-estado--espera { background: rgba(200,147,90,.15); color: var(--cobre-claro); }
+.funil-estado--enviada { background: rgba(47,127,214,.16); color: #8dbbef; }
+.funil-estado--ok { background: rgba(95,191,127,.15); color: #8fdcaa; }
+.funil-estado--off { background: rgba(236,230,218,.06); color: var(--suave); }
+@media (min-width: 900px) { .funil-grade { grid-template-columns: 1fr 1fr; align-items: start; } }

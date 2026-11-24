@@ -1,6 +1,7 @@
 /**
  * Painel da equipe da Barbearia Roque. Página própria (painel.html), fora do app do cliente.
  * Computador: menu lateral em grupos. Celular: barra inferior com as 4 seções do dia a dia + "Mais".
+ * Funil: de onde os clientes vêm e onde param (só para olhar; a retomada de quem parou é automática).
  * A equipe toda vê tudo, menos os Resultados (financeiro), que são só do dono.
  * Ajustes: o dono configura tudo; o barbeiro só troca a própria senha.
  */
@@ -14,13 +15,14 @@ import Ajustes from './Ajustes'
 import Avaliacoes from './Avaliacoes'
 import Clientes from './Clientes'
 import Divulgacao from './Divulgacao'
+import Funil from './Funil'
 import LojaPainel from './LojaPainel'
 import Mensagens from './Mensagens'
 import Resultados from './Resultados'
 
 const B = import.meta.env.BASE_URL
 
-type Secao = 'agenda' | 'loja' | 'clientes' | 'avaliacoes' | 'mensagens' | 'resultados' | 'divulgacao' | 'ajustes'
+type Secao = 'funil' | 'agenda' | 'loja' | 'clientes' | 'avaliacoes' | 'mensagens' | 'resultados' | 'divulgacao' | 'ajustes'
 type Item = { id: Secao; rotulo: string; icone: string; titulo: string; dono?: boolean }
 
 const ITENS: Item[] = [
@@ -29,6 +31,7 @@ const ITENS: Item[] = [
   { id: 'clientes', rotulo: 'Clientes', icone: 'perfil', titulo: 'Clientes' },
   { id: 'avaliacoes', rotulo: 'Avaliações', icone: 'estrela', titulo: 'Avaliações' },
   { id: 'mensagens', rotulo: 'Mensagens', icone: 'whats', titulo: 'Mensagens do WhatsApp' },
+  { id: 'funil', rotulo: 'Funil', icone: 'funil', titulo: 'Funil de clientes' },
   { id: 'resultados', rotulo: 'Resultados', icone: 'painel', titulo: 'Resultados', dono: true },
   { id: 'divulgacao', rotulo: 'Divulgação', icone: 'insta', titulo: 'Divulgação' },
   { id: 'ajustes', rotulo: 'Ajustes', icone: 'ajustes', titulo: 'Ajustes' },
@@ -36,7 +39,7 @@ const ITENS: Item[] = [
 const GRUPOS: [string, Secao[]][] = [
   ['Dia a dia', ['agenda', 'loja']],
   ['Clientes', ['clientes', 'avaliacoes', 'mensagens']],
-  ['Gestão', ['resultados', 'divulgacao', 'ajustes']],
+  ['Gestão', ['funil', 'resultados', 'divulgacao', 'ajustes']],
 ]
 const PRINCIPAIS: Secao[] = ['agenda', 'loja', 'clientes', 'avaliacoes']
 
@@ -77,6 +80,7 @@ function Area({ usuario, sair }: { usuario: UsuarioPainel; sair: () => void }) {
     clientes: <Clientes />,
     avaliacoes: <Avaliacoes />,
     mensagens: <Mensagens usuario={usuario} />,
+    funil: <Funil />,
     resultados: <Resultados />,
     divulgacao: <Divulgacao usuario={usuario} />,
     ajustes: <Ajustes usuario={usuario} />,
